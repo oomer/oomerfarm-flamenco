@@ -3,20 +3,20 @@
 [ WORK IN PROGRESS ]
 [ ALPHA release v0.1 ]
 
->## oomerfarm is a family of helpers scripts for different renderfarms to take advantage of cheap hourly rates at any cloud compute provider
+>#### A family of helpers scripts for DIY renderfarms to take advantage of cheap hourly rates at any cloud compute provider
 
 ### oomerfarm-flamenco adds https://flamenco.blender.org
-- Flamenco provides the actual renderfarm functionality
-- while these scripts ...
-    - focus on setting up a useful network topology complete with storage and security to complement any renderfarm
-    - After running the four scripts on 3 different machines 
-        - connect to flamenco-manager at http://10.88.0.1:8080 from your Blender workstation
-        - grab/install the Flamenco add-on
-        - load a scene and in the Outputs section, send a Simple-Blender-Job with multiple frames to your farm
-        - monitor the progress in the web interface
-        - mount smb://10.88.0.1/oomerfarm MacOS/Linux
-        - mount \\\\10.87.0.1\oomerfarm Windows
-        - get your images
+- Flamenco provides the actual renderfarm functionality while these scripts provide a network topology with storage and security to complement it.
+
+### Renderfarm have a lot of moving parts and these 4 scripts break down the task into manangeable chunks
+
+<span style="color:cyan;">bolstersecurity.sh</span> = manage VPN security keys
+
+<span style="color:cyan;">bootstrapfarm.sh</span> = prep network storage and flamenco-manager
+
+<span style="color:cyan;">bootstrapworker.sh</span> = run on each worker to prep flamenco-worker
+
+<span style="color:cyan;">bridgefarm.sh</span> = user connect to VPN
 
 ## Security notes ( always audit the code )
 
@@ -60,6 +60,16 @@
 4. <span style="color:green;">**bash bridgefarm.sh**</span> on <span style="color:cyan;">Computer A</span>. Connect to http://10.88.01:8080 , from there download add-on, launch Blender, install add-on, submit job via Outputs section. 
         
         - joins Nebula overlay network
+5. <span style="color:green;">Blender</span> 
+
+        - mount smb://10.88.0.1/oomerfarm MacOS/Linux
+        - mount \\10.87.0.1\oomerfarm Windows
+
+        - http://10.88.0.1:8080 from your workstation
+        - Blender install Flamenco add-on from webpage
+
+        - In Output tab -> Flamenco  submit 
+        - get your images
 
 
 ## Summary
