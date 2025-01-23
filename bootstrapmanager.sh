@@ -28,6 +28,18 @@ farm_name="oomerfarm"
 user_name="oomerfarm"
 linux_password="oomerfarm"  
 
+if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+    dnf -y install tar curl initscripts
+elif ! [ $skip == "yes" ]; then
+    if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
+        apt -y update
+        apt -y install tar curl
+    fi
+else
+    echo "\e[31mFAIL:\e[0m Unsupported operating system $os_name"
+    exit
+fi
+
 public_ip=$(curl ifconfig.me)
 
 # Bella path traeer
@@ -55,18 +67,6 @@ echo -e "\e[32mContinue on\e[0m \e[37m$(hostname)?\e[0m"
 read -p "(Enter Yes) " accept
 if [ "$accept" != "Yes" ]; then
     echo -e "\n\e[31mFAIL:\e[0m Script aborted because Yes was not entered"
-    exit
-fi
-
-if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-    dnf -y install tar curl initscripts
-elif ! [ $skip == "yes" ]; then
-    if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
-        apt -y update
-        apt -y install tar curl
-    fi
-else
-    echo "\e[31mFAIL:\e[0m Unsupported operating system $os_name"
     exit
 fi
 

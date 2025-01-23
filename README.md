@@ -25,6 +25,7 @@
 - Nebula group access limits mean the "farm" workers cannot upstream connect to your laptop
 - Your workstation's connection is alive only while the **bridgefarm.sh** is running. Keep terminal/cli/cmd window off to the side. Yes a proper app would be more efficient, if you want one use (Tailscale)[https://tailscale.com] :)
 
+> Note while bolstersecurity.sh and bridgefarm.sh run on Mac/Win/Linux, flamenco-manager and and flamenco-worker will only be deployed via bootstrapfarm.sh and bootstrapworker.sh on Linux.
 
 ---
 ## Computers Needed
@@ -63,10 +64,13 @@
 5. <span style="color:green;">Blender</span> 
 
         - mount smb://10.88.0.1/oomerfarm MacOS/Linux
-        - mount \\10.87.0.1\oomerfarm Windows
+        - mount \\10.88.0.1\oomerfarm Windows
+                - map this as the O: drive
+                - edit /home/oomerfarm/flamenco-manager.yaml if you map to a different letter 
 
         - http://10.88.0.1:8080 from your workstation
         - Blender install Flamenco add-on from webpage
+        - Set Manager URL to http://10.88.0.1:8080 
 
         - In Output tab -> Flamenco  submit 
         - get your images
