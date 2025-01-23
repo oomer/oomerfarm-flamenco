@@ -283,7 +283,7 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
             exit
     fi
 elif [[ "$OSTYPE" == "darwin"* ]] || [[ "$OSTYPE" == "msys"* ]]; then
-    MatchFile="$(echo "${nebulasha256}  ${nebulabindir}/${nebulaexe}" | shasum -a 256 --check)"
+    MatchFile="$(echo "${nebulaexesha256}  ${nebulabindir}/${nebulaexe}" | shasum -a 256 --check)"
     if ! [ "$MatchFile" == "${nebulabindir}/${nebulaexe}: OK" ] ; then
             echo -e "\n${nebulabindir}/${nebulaexe} has been corrupted or maliciously tampered with"
             exit
