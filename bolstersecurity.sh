@@ -22,23 +22,17 @@ echo -e "needed for a 100 node renderfarm , 1 farm server and 1 user"
 
 farm_name="farm"
 
-os_name=$(awk -F= '$1=="NAME" { print $2 ;}' /etc/os-release)
-
-if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-    dnf -y install tar curl 
-elif ! [ $skip == "yes" ]; then
-    if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    os_name=$(awk -F= '$1=="NAME" { print $2 ;}' /etc/os-release)
+    if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+        dnf -y install tar curl 
+    elif [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
         apt -y update
         apt -y install tar curl
     fi
-else
-    echo "\e[31mFAIL:\e[0m Unsupported operating system $os_name"
-    exit
 fi
 
-
 # Download Nebula from github once
-# ================================
 nebula_url="https://github.com/slackhq/nebula/releases/download/"
 if ! ( test -f ".oomer/bin/nebula-cert" ); then
 	echo -e "\nDownloading Nebula ${nebula_version} ..."
