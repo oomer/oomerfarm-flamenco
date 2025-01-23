@@ -3,29 +3,30 @@
 [ WORK IN PROGRESS ]
 [ ALPHA release v0.1 ]
 
->#### A family of helpers scripts for DIY renderfarms to take advantage of cheap hourly rates at any cloud compute provider
+>#### A family of helpers scripts for DIY renderfarms to take advantage of cheap hourly cloud compute.
 
 ### oomerfarm-flamenco adds https://flamenco.blender.org
-- Flamenco provides the actual renderfarm functionality while these scripts provide a network topology with storage and security to complement it.
+- Flamenco provides the actual renderfarm functionality while these scripts complement it with network storage, security and cli deployment.
+- Oomerfarm's goal is to streamline the process so it is plausible to build and dismantle your personal renderfarm every other week.
+- [Bellarender](https://bellarender.com) and bella.js are installed on workers
+>Renderfarms have a lot of moving parts; these parts are wrangled down to 4 scripts.
 
-### Renderfarm have a lot of moving parts and these 4 scripts break down the task into manangeable chunks
+<span style="color:cyan;">bolstersecurity.sh</span> = manage VPN security keys <sub>(Mac/Win/Linux)</sub>
 
-<span style="color:cyan;">bolstersecurity.sh</span> = manage VPN security keys
+<span style="color:cyan;">bootstrapmanager.sh</span> = setup network storage and flamenco-manager <sub>(Linux)</sub>
 
-<span style="color:cyan;">bootstrapfarm.sh</span> = prep network storage and flamenco-manager
+<span style="color:cyan;">bootstrapworker.sh</span> = setup flamenco-worker <sub>(Linux)</sub>
 
-<span style="color:cyan;">bootstrapworker.sh</span> = run on each worker to prep flamenco-worker
+<span style="color:cyan;">joinfarm.sh</span> = connect to private network<sub>(Mac/Win/Linux)</sub>
 
-<span style="color:cyan;">bridgefarm.sh</span> = user connect to VPN
-
-## Security notes ( always audit the code )
+#### Security notes <sup>( review the code yourself )</sup>
 
 - Uses [Nebula](https://github.com/slackhq/nebula) to overlay a private network across the internet to hide your (**http**)  flamenco-manager and (**smb**) network storage access.
 - servers and workers enforce SELinux and any traffic other than 22/tcp and 42042/udp are dropped by the firewall
-- Nebula group access limits mean the "farm" workers cannot upstream connect to your laptop
-- Your workstation's connection is alive only while the **bridgefarm.sh** is running. Keep terminal/cli/cmd window off to the side. Yes a proper app would be more efficient, if you want one use (Tailscale)[https://tailscale.com] :)
+- Nebula group access fence packets from cloud computers
+- Your workstation's connection is alive only while **joinfarm.sh** is running. 
 
-> Note while bolstersecurity.sh and bridgefarm.sh run on Mac/Win/Linux, flamenco-manager and and flamenco-worker will only be deployed via bootstrapfarm.sh and bootstrapworker.sh on Linux.
+> Note while bolstersecurity.sh and joinfarm.sh run on Mac/Win/Linux, flamenco-manager and and flamenco-worker will only be deployed via bootstrapmanager.sh and bootstrapworker.sh on Linux.
 
 ---
 ## Computers Needed
@@ -34,41 +35,39 @@
     - Doesn't render, just adds network storage and dispatches jobs
     - [RECOMMENDED] run a a cheap monthly server [see lowendtalk.com](https://lowendtalk.com/categories/offers)
     - OR run on a mini pc at home and port forward [42042] on your router 
-- <span style="color:cyan;">Computer 1-100</span> => cpu/gpu Alma/Rocky 8.x/9.x Linux hourly rentals [examples](https://tensordock.com/)
-    - OR Add your local computers 
+- <span style="color:cyan;">Computer 1-100</span> => cpu/gpu Alma/Rocky 8.x/9.x Linux hourly rentals [example](https://tensordock.com/)
+    - OR Add your local Linux computers 
 ---
 
 ## Run scripts in terminal/cli 
 - bash scripts run natively on MacOS/Linux
 - Windows requires [git-scm](https://git-scm.com) to get bash
 
-1. <span style="color:green;">**bash bolstersecurity.sh**</span> on <span style="color:cyan;">Computer A</span> creating VPN credentials  
+1. <span style="color:green;">**bash bolstersecurity.sh**</span> on <span style="color:cyan;">Computer A</span> <sup>(Mac/Win/Linux)</sup> 
 
         - generates keys for Nebula overlay network
-        - put encrypted keys on Google Drive, share publicly, copy link
-2. <span style="color:green;">**bash bootstrapfarm.sh**</span> on <span style="color:cyan;">Computer B</span>
+   - then put encrypted keys on Google Drive, share publicly
+2. <span style="color:green;">**bash bootstrapmanager.sh**</span> on <span style="color:cyan;">Computer B</span><sup>(Linux)</sup>
         
         - joins Nebula overlay network
         - launches flamenco-manager
         - provides network storage 
-3. <span style="color:green;">**bash bootstrapworker.sh**</span> on <span style="color:cyan;">Computer 1-100</span> hourly rentals
+3. <span style="color:green;">**bash bootstrapworker.sh**</span> on <span style="color:cyan;">Computer 1-100</span> hourly rentals<sup>(Linux)</sup>
 
         - joins Nebula overlay network
         - launches flamenco-worker
         - [NOTE] ensure worker names are numerically unique workerxxx to avoid IP address clash
         - [SECURITY NOTE] each worker has ALL worker keys to simplify mass deployment. They are trusted as a group. 
 
-4. <span style="color:green;">**bash bridgefarm.sh**</span> on <span style="color:cyan;">Computer A</span>. Connect to http://10.88.01:8080 , from there download add-on, launch Blender, install add-on, submit job via Outputs section. 
+4. <span style="color:green;">**bash joinfarm.sh**</span> on <span style="color:cyan;">Computer A</span><sup>(Mac/Win/Linux)</sup>
         
         - joins Nebula overlay network
-5. <span style="color:green;">Blender</span> 
-
-        - mount smb://10.88.0.1/oomerfarm MacOS/Linux
+        - mount smb://10.88.0.1/oomerfarm Mac/Linux
         - mount \\10.88.0.1\oomerfarm Windows
                 - map this as the O: drive
-                - edit /home/oomerfarm/flamenco-manager.yaml if you map to a different letter 
-
+                - edit /home/oomerfarm/flamenco-manager.yaml if needed
         - http://10.88.0.1:8080 from your workstation
+5. <span style="color:green;">Blender</span> 
         - Blender install Flamenco add-on from webpage
         - Set Manager URL to http://10.88.0.1:8080 
 
@@ -78,20 +77,18 @@
 
 ## Summary
 
-4 bash scripts, all starting with the letter ***b*** to empower your personal renderfarm.
+4 bash scripts for jumpstarting your personal renderfarm.
 
-    - bolstersecurity.sh -> Mac/Win/Linux Desktop
-    - bootstrapfarm.sh -> Linux Server
-    - bootstrapworker.sh -> Linux Worker
-    - bridgefarm.sh -> Mac/Win/Linux Desktop
+- bolstersecurity.sh <sup>Mac/Win/Linux</sup>
+- bootstrapmanager.sh <sup>Linux management/storage server</sup>
+- bootstrapworker.sh <sup>Linux render worker</sup>
+- join.sh <sup>Mac/Win/Linux</sup>
 
-
-
-
-## Compute Charges
-- You will be charged the the hour or by the month even if you forget to destroy your Virtual Machines. Remember to destroy.
-- [TODO] Add auto destroy timer ( useful so far only on GCP )
+## Compute Charge Caveat
+- You will be charged the the hour or by the month if you forget to destroy your Virtual Machines. Remember to destroy.
+- [TODO] Add auto destroy timer ( Google preemptible VMs only )
 
 ## Security note
 - not all cloud vendors scrub their drives after each rental allowing the next renter to possible retrieve passwords and keys present on the disk
-- [TODO] Add the ability to encrypt the disk at rest or to wipe the keys before rental expiry. 
+- [TODO] Add the ability to encrypt the disk at rest
+- [TODO] Add dead man's script, that on shutdown, keys are wiped ( Since cloud may use COW filesystem, this is weak sauce)
