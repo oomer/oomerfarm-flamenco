@@ -301,7 +301,7 @@ if [[ "$OSTYPE" == "darwin"* ]] ; then
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     sudo ${nebulabindir}/nebula -config .oomer/user/${user_key}/config.yml
 elif [[ "$OSTYPE" == "msys"* ]]; then
-i   echo $(pwd)
+    echo $(pwd)
 cat <<EOF > ~/Desktop/joinfarm.bat
 ${oomerfarm_path}\\.oomer\\bin\\nebula.exe -config ${oomerfarm_path}\\.oomer\\user\\${user_key}\\config.yml
 EOF
