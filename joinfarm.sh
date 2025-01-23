@@ -188,8 +188,6 @@ pki:
   cert: ${oomerfarm_path}${crt_path}
   key: ${oomerfarm_path}${key_path}
 
-# init script should replace the strings with the actual values
-# or can just be done manually by hand
 static_host_map:
   "${lighthouse_nebula_ip}": ["${lighthouse_internet_ip}:42042"]
 
@@ -228,15 +226,15 @@ firewall:
     udp_timeout: 3m
     default_timeout: 10m
 
-outbound:
-  - port: any
-    proto: any
-    host: any
+  outbound:
+    - port: any
+      proto: any
+      host: any
 
-inbound:
-  - port: any
-    proto: icmp
-    host: any
+  inbound:
+    - port: any
+      proto: icmp
+      host: any
 EOF
 fi
         
@@ -306,5 +304,5 @@ cat <<EOF > ~/Desktop/joinfarm.bat
 ${oomerfarm_path}\\.oomer\\bin\\nebula.exe -config ${oomerfarm_path}\\.oomer\\user\\${user_key}\\config.yml
 EOF
     echo -e "On \e[32mdesktop\e[0m, right click \e[37m\e[5mjoinfarm.bat\e[0m\e[0m, Run as adminstrator"
-    echo -e "Do not run this script if it did not come from  https://github.com/oomer/oomerfarm"
+    echo -e "SECURITY WARNING: Do not run this script before comparing it with the canonical version at https://github.com/oomer/oomer-flamenco"
 fi
