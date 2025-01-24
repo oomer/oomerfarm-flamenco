@@ -8,7 +8,7 @@
 ### oomerfarm-flamenco adds https://flamenco.blender.org
 - Flamenco provides the actual renderfarm functionality while these scripts complement it with network storage, security and cli deployment.
 - Oomerfarm's goal is to streamline the process so it is plausible to build and dismantle your personal renderfarm every other week.
-- [Bellarender](https://bellarender.com) and bella.js are installed on workers
+- [Bellarender](https://bellarender.com) 24.6.1, Blender 4.3.2 are installed on workers
 
 ![image](./img/gui.jpg )
 
