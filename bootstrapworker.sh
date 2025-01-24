@@ -20,7 +20,7 @@ if [[ "$1" == "bypass" ]]; then
     skip="no"
 fi
 
-if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
     echo "Detected Alma/Rocky Linux" 
 elif ! [ $skip == "yes" ]; then
     if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
@@ -162,10 +162,10 @@ fi
 
 if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
     dnf -y install tar curl initscripts
-    echo "Installing Blender"
     curl -O ${blenderurl}/blender-${blenderversion}-linux-x64.tar.xz   
-    echo "Installing Blender"
-    dnf install -y libXrender.so.1 libXrender libXi libSM
+    dnf install -y libXrender.so.1 
+    dnf install -y libXrender 
+    dnf install -y libXi libSM
     #dnf install -y python3-zstd
 elif ! [ $skip == "yes" ]; then
     if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
@@ -232,7 +232,8 @@ if ! test -d /etc/nebula; then
     mkdir -p /etc/nebula
 fi
 tar --no-same-owner --strip-components 1 -xvf worker.tar -C /etc/nebula
-if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+
+if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
     chown root:root /etc/nebula/*.crt
     chown root:root /etc/nebula/*.key
 else
