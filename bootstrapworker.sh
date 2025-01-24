@@ -160,12 +160,12 @@ else
     exit
 fi
 
-if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
     dnf -y install tar curl initscripts
+    echo "Installing Blender"
     curl -O ${blenderurl}/blender-${blenderversion}-linux-x64.tar.xz   
-    dnf -install -y libXrender.so.1 
-    dnf -install -y libXrender 
-    dnf -install -y libXi libSM
+    echo "Installing Blender"
+    dnf install -y libXrender.so.1 libXrender libXi libSM
     #dnf install -y python3-zstd
 elif ! [ $skip == "yes" ]; then
     if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
