@@ -172,14 +172,12 @@ elif ! [ $skip == "yes" ]; then
         apt -y update
         apt -y install tar curl
         apt remove -y needrestart
-        apt install -y -qq libxrender1 libxi6 libxkbcommon-x11-0 libsm6
+        apt install -y -qq libxrender1 libxi6 libxkbcommon-x11-0 libsm6 libgl1-mesa-dri libegl1
         curl -O ${blenderurl}/blender-${blenderversion}-linux-x64.tar.xz   
         #snap install blender --classic
         #apt -y install python3-zstd #required for .blend decompress
     fi
 fi
-
-
 
 #systemctl enable --now sysstat
 echo -e "\e[32mStarting cifs module\e[0m"
