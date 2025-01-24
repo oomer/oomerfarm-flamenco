@@ -52,25 +52,27 @@
         - joins Nebula overlay network
         - launches flamenco-manager
         - provides network storage 
-3. <span style="color:green;">**bash bootstrapworker.sh**</span> on <span style="color:cyan;">Computer 1-100</span> hourly rentals<sup>(Linux)</sup>
 
-        - joins Nebula overlay network
-        - launches flamenco-worker
-        - [NOTE] ensure worker names are numerically unique workerxxx to avoid IP address clash
-        - [SECURITY NOTE] each worker has ALL worker keys to simplify mass deployment. They are trusted as a group. 
-
-4. <span style="color:green;">**bash joinfarm.sh**</span> on <span style="color:cyan;">Computer A</span><sup>(Mac/Win/Linux)</sup>
+3. <span style="color:green;">**bash joinfarm.sh**</span> on <span style="color:cyan;">Computer A</span><sup>(Mac/Win/Linux)</sup>
         
         - joins Nebula overlay network
         - mount smb://10.88.0.1/oomerfarm Mac/Linux
         - mount \\10.88.0.1\oomerfarm Windows
                 - map this as the O: drive
                 - edit /home/oomerfarm/flamenco-manager.yaml if needed
-        - http://10.88.0.1:8080 from your workstation
+        - http://10.88.0.1:8080 from your workstation set Shared Storage to /mnt/oomerfarm/flamenco
+
+4. <span style="color:green;">**bash bootstrapworker.sh**</span> on <span style="color:cyan;">Computer 1-100</span> hourly rentals<sup>(Linux)</sup>
+
+        - joins Nebula overlay network
+        - launches flamenco-worker
+        - installs Blender and bellarender
+        - [NOTE] ensure worker names are numerically unique workerxxx to avoid IP address clash
+        - [SECURITY NOTE] each worker has ALL worker keys to simplify mass deployment. They are trusted as a group. 
+
 5. <span style="color:green;">Blender</span> 
         - Blender install Flamenco add-on from webpage
         - Set Manager URL to http://10.88.0.1:8080 
-
         - In Output tab -> Flamenco  submit 
         - get your images
 
