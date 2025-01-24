@@ -163,7 +163,9 @@ fi
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
     dnf -y install tar curl initscripts
     curl -O ${blenderurl}/blender-${blenderversion}-linux-x64.tar.xz   
-    dnf -install -y libXrender libXi libSM
+    dnf -install -y libXrender.so.1 
+    dnf -install -y libXrender 
+    dnf -install -y libXi libSM
     #dnf install -y python3-zstd
 elif ! [ $skip == "yes" ]; then
     if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
@@ -392,14 +394,20 @@ systemctl restart nebula.service
 mkdir -p /mnt/oomerfarm
 grep -qxF "//$lighthouse_nebula_ip/oomerfarm /mnt/oomerfarm cifs rw,noauto,x-systemd.automount,x-systemd.device-timeout=45,nobrl,uid=3000,gid=3000,file_mode=0664,credentials=/etc/nebula/smb_credentials 0 0" /etc/fstab || echo "//$lighthouse_nebula_ip/oomerfarm /mnt/oomerfarm cifs rw,noauto,x-systemd.automount,x-systemd.device-timeout=45,nobrl,uid=3000,gid=3000,file_mode=0664,credentials=/etc/nebula/smb_credentials 0 0" >> /etc/fstab
 
-mount /mnt/oomerfarm
+echo "Sleeping for 10 seconds for mount to finish"
+if ! ( test -f /mnt/${farm_name}/installers/bella_cli-${bella_version}.tar.gz ); then
+    echo "Mounting network stroage"
+    mount /mnt/oomerfarm
+    echo "Sleeping for 10 seconds for mount to finish"
+    sleep 10
+fi
 
 # Install Bella path tracer, checksum check in case network storage is compromised
 echo -e "\nInstalling bella_cli"
-cp /mnt/${farm_name}/installers/bella_cli-${bellaversion}.tar.gz .
+cp /mnt/${farm_name}/installers/bella_cli-${bella_version}.tar.gz .
 MatchFile="$(echo "${bellasha256} bella_cli-${bella_version}.tar.gz" | sha256sum --check)"
 if [ "$MatchFile" = "bella_cli-${bella_version}.tar.gz: OK" ] ; then
-    tar -xvf bella_cli-${bellaversion}.tar.gz 
+    tar -xvf bella_cli-${bella_version}.tar.gz 
     chmod +x bella_cli
     mv bella_cli /usr/local/bin
     rm bella_cli-${bella_version}.tar.gz 
