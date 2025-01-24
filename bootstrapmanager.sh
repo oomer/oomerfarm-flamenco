@@ -443,10 +443,14 @@ echo flamenco-${flamenco_version}-linux-amd64/flamenco-manager /home/${user_name
 cp flamenco-${flamenco_version}-linux-amd64/flamenco-manager /home/${user_name}/flamenco-manager
 cp flamenco-${flamenco_version}-linux-amd64/flamenco-worker /mnt/${farm_name}/installers
 cp -r flamenco-${flamenco_version}-linux-amd64/tools /mnt/${farm_name}/installers/tools
+cp -r tools /home/${user_name}/
+
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
     chown ${user_name}:${user_name}  /home/${user_name}/flamenco-manager
+    chown -R ${user_name}:${user_name}  /home/${user_name}/tools
 elif [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
     chown ${user_name}.${user_name}  /home/${user_name}/flamenco-manager
+    chown -R ${user_name}.${user_name}  /home/${user_name}/tools
 fi
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
     chcon -t bin_t /home/${user_name}/flamenco-manager # SELinux security clearance
