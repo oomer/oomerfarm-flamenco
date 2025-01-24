@@ -10,7 +10,7 @@
 - Oomerfarm's goal is to streamline the process so it is plausible to build and dismantle your personal renderfarm every other week.
 - [Bellarender](https://bellarender.com) and bella.js are installed on workers
 
-![image](./img/gui.png )
+![image](./img/gui.jpg )
 
 >Renderfarms have a lot of moving parts; these parts are wrangled down to 4 scripts.
 
