@@ -11,9 +11,7 @@
 source /etc/os-release
 os_name=$(awk -F= '$1=="NAME" { print $2 ;}' /etc/os-release)
 
-bellaversion="24.6.1"
 worker_prefix=worker
-
 lighthouse_internet_port="42042"
 lighthouse_nebula_ip="10.88.0.1"
 
@@ -22,26 +20,21 @@ if [[ "$1" == "bypass" ]]; then
     skip="no"
 fi
 
-
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-    dnf -y install tar curl initscripts
-    dnf install -y epel-release
-    dnf install -y snapd
-    systemctl enable --now snapd.socket
-    ln -s /var/lib/snapd/snap /snap
-    snap install blender --classic
-    dnf install -y python3-zstd
+    echo "Detected Alma/Rocky Linux" 
 elif ! [ $skip == "yes" ]; then
     if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
-        apt -y update
-        apt -y install tar curl
-        snap install blender --classic
-        apt -y install python3-zstd #required for .blend decompress
+        echo "Detected Ubuntu/Debian Linux" 
     fi
 else
     echo -e "\e[31mFAIL:\e[0m Unsupported operating system $os_name"
     exit
 fi
+
+#blender
+blenderversion="4.3.2"
+blenderurl="https://mirrors.ocf.berkeley.edu/blender/release/Blender4.3"
+blendersha256=""
 
 #nebula
 nebula_version="v1.9.5"
@@ -157,7 +150,7 @@ elif [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ];
     # [ TODO ] securiyt check apparmor 
     echo -e "\e[32mDiscovered $os_name\e[0m. Support of Ubuntu is alpha quality"
     apt -y update
-    apt -y install sysstat # needed for /usr/local/bin/oomerfarm_shutdown.sh
+    #apt -y install sysstat # needed for /usr/local/bin/oomerfarm_shutdown.sh
     apt -y install cifs-utils
     apt -y install curl
     apt -y install mesa-vulkan-drivers 
@@ -166,6 +159,23 @@ else
     echo "\e[31mFAIL:\e[0m Unsupported operating system $os_name"
     exit
 fi
+
+if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+    dnf -y install tar curl initscripts
+    curl -O ${blenderurl}/blender-${blenderversion}-linux-x64.tar.xz   
+    dnf -install -y libXrender libXi libSM
+    #dnf install -y python3-zstd
+elif ! [ $skip == "yes" ]; then
+    if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
+        apt -y update
+        apt -y install tar curl
+        curl -O ${blenderurl}/blender-${blenderversion}-linux-x64.tar.xz   
+        #snap install blender --classic
+        #apt -y install python3-zstd #required for .blend decompress
+    fi
+fi
+
+
 
 #systemctl enable --now sysstat
 echo -e "\e[32mStarting cifs module\e[0m"
@@ -399,6 +409,13 @@ else
     exit
 fi
 
+# Install blender in home dir of oomerfarm user
+tar -xvf blender-${blenderversion}-linux-x64.tar.xz --directory /home/${user_name}
+if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
+    chown -R ${user_name}:${user_name} /home/${user_name}/blender-${blenderversion}-linux-x64
+else
+    chown -R ${user_name}.${user_name} /home/${user_name}/blender-${blenderversion}-linux-x64
+fi
 
 # Install flamenco-worker, checksum check in case network storage is compromised
 echo -e "\nInstalling flamenco-worker"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# bootstraphub.sh
+# bootstrapmanager.sh
 
 # Turns this machine into a renderfarm hub running
 # - [ ] flamenco-manager 
@@ -46,6 +46,11 @@ public_ip=$(curl ifconfig.me)
 bella_version="24.6.1"
 bella_url="https://downloads.bellarender.com/bella_cli-${bella_version}.tar.gz"
 bellasha256="3ddcff1994dd3f13a7048472ccf7fbb48b0651b1fd627d07f35cab94475c9261"
+
+#blender
+blenderversion="4.3.2"
+blenderurl="https://mirrors.ocf.berkeley.edu/blender/release/Blender4.3"
+blendersha256=""
 
 # Flamenco 
 flamenco_version="3.6"
@@ -464,6 +469,64 @@ ExecStart=/home/${user_name}/flamenco-manager
 WantedBy=multi-user.target
 
 EOF
+
+cat <<EOF > /home/${user_name}/flamenco-manager.yaml
+# Configuration file for Flamenco.
+# For an explanation of the fields, refer to flamenco-manager-example.yaml
+#
+# NOTE: this file will be overwritten by Flamenco Manager's web-based configuration system.
+#
+# This file was written on 2025-01-23 16:05:10 -05:00 by Flamenco 3.6
+
+_meta:
+  version: 3
+manager_name: Flamenco
+database: flamenco-manager.sqlite
+database_check_period: 10m0s
+listen: :8080
+autodiscoverable: true
+local_manager_storage_path: ./flamenco-manager-storage
+shared_storage_path: /mnt/oomerfarm/flamenco
+shaman:
+  enabled: true
+  garbageCollect:
+    period: 24h0m0s
+    maxAge: 744h0m0s
+    extraCheckoutPaths: []
+task_timeout: 10m0s
+worker_timeout: 1m0s
+blocklist_threshold: 3
+task_fail_after_softfail_count: 3
+mqtt:
+  client:
+    broker: ""
+    clientID: flamenco
+    topic_prefix: flamenco
+    username: ""
+    password: ""
+variables:
+  blender:
+    values:
+    - platform: linux
+      value: /home/oomerfarm/blender-${blenderversion}-linux-x64/blender
+    - platform: windows
+      value: blender
+    - platform: darwin
+      value: blender
+  blenderArgs:
+    values:
+    - platform: all
+      value: -b -y
+  my_storage:
+    is_twoway: true
+    values:
+    - platform: linux
+      value: /mnt/oomerfarm/flamenco
+    - platform: windows
+      value: O:\flamenco
+    - platform: darwin
+      value: /Volumes/oomerfarm/flamenco
+
 systemctl enable --now flamenco-manager
 
 
