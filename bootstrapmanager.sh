@@ -526,6 +526,7 @@ variables:
       value: O:\flamenco
     - platform: darwin
       value: /Volumes/oomerfarm/flamenco
+EOF
 
 systemctl enable --now flamenco-manager
 
