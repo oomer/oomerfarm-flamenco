@@ -473,8 +473,8 @@ do
 		fi
 
 		mkdir -p .oomer/user/${user_name} 
-		echo .oomer/bin/nebula-cert sign -name "${user_name}" -ip "${octet0}.${octet1}.${octet2}.${octet3}/${mask}" -groups "farm,server,user" -out-crt ".oomer/user/${user_name}/${user_name}.crt" -out-key ".oomer/user/${user_name}/${user_name}.key" -ca-crt ".oomer/keyauthority/ca.crt" -ca-key ".oomer/keyauthority/ca.key"
-		.oomer/bin/nebula-cert sign -name "${user_name}" -ip "${octet0}.${octet1}.${octet2}.${octet3}/${mask}" -groups "farm,server,user" -out-crt ".oomer/user/${user_name}/${user_name}.crt" -out-key ".oomer/user/${user_name}/${user_name}.key" -ca-crt ".oomer/keyauthority/ca.crt" -ca-key ".oomer/keyauthority/ca.key"
+		echo .oomer/bin/nebula-cert sign -name "${user_name}" -ip "${octet0}.${octet1}.${octet2}.${octet3}/${mask}" -groups "farm,server,lighthouse,user" -out-crt ".oomer/user/${user_name}/${user_name}.crt" -out-key ".oomer/user/${user_name}/${user_name}.key" -ca-crt ".oomer/keyauthority/ca.crt" -ca-key ".oomer/keyauthority/ca.key"
+		.oomer/bin/nebula-cert sign -name "${user_name}" -ip "${octet0}.${octet1}.${octet2}.${octet3}/${mask}" -groups "farm,server,lighthouse,user" -out-crt ".oomer/user/${user_name}/${user_name}.crt" -out-key ".oomer/user/${user_name}/${user_name}.key" -ca-crt ".oomer/keyauthority/ca.crt" -ca-key ".oomer/keyauthority/ca.key"
 
 		origdir=$(pwd)
 		cp .oomer/keyauthority/ca.crt .oomer/user/${user_name}
