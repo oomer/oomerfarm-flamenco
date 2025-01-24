@@ -396,7 +396,8 @@ grep -qxF "//$lighthouse_nebula_ip/oomerfarm /mnt/oomerfarm cifs rw,noauto,x-sys
 
 echo "Sleeping for 10 seconds for mount to finish"
 if ! ( test -f /mnt/${farm_name}/installers/bella_cli-${bella_version}.tar.gz ); then
-    echo "Mounting network stroage"
+    systemctl daemon-reload
+    echo "Mounting network storage"
     mount /mnt/oomerfarm
     echo "Sleeping for 10 seconds for mount to finish"
     sleep 10
