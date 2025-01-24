@@ -171,6 +171,8 @@ elif ! [ $skip == "yes" ]; then
     if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
         apt -y update
         apt -y install tar curl
+        apt remove -y needrestart
+        apt install -y -qq libxrender1 libxi6 libxkbcommon-x11-0 libsm6
         curl -O ${blenderurl}/blender-${blenderversion}-linux-x64.tar.xz   
         #snap install blender --classic
         #apt -y install python3-zstd #required for .blend decompress
