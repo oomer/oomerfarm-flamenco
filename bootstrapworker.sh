@@ -165,7 +165,7 @@ if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ];
     curl -O ${blenderurl}/blender-${blenderversion}-linux-x64.tar.xz   
     dnf install -y libXrender.so.1 
     dnf install -y libXrender 
-    dnf install -y libXi libSM
+    dnf install -y libXi libSM libxkbcommon
     #dnf install -y python3-zstd
 elif ! [ $skip == "yes" ]; then
     if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
