@@ -21,8 +21,8 @@ os_name=$(awk -F= '$1=="NAME" { print $2 ;}' /etc/os-release)
 nebula_name="farm"
 nebula_ip="10.88.0.1"
 nebula_public_port="42042"
-nebula_version="v1.9.5"
-nebulasha256="af57ded8f3370f0486bb24011942924b361d77fa34e3478995b196a5441dbf71"
+nebula_version="v1.10.3"
+nebulasha256="99ac335caeb69d02a6b6b00a3d4b5d0a36ec3971df480a1cc50e6db378342955"
 nebula_url="https://github.com/slackhq/nebula/releases/download/${nebula_version}/nebula-linux-amd64.tar.gz"
 farm_name="oomerfarm"
 user_name="oomerfarm"
@@ -43,9 +43,9 @@ fi
 public_ip=$(curl ifconfig.me)
 
 # Bella path traeer
-bella_version="24.6.1"
+bella_version="25.3.0"
 bella_url="https://downloads.bellarender.com/bella_cli-${bella_version}.tar.gz"
-bellasha256="3ddcff1994dd3f13a7048472ccf7fbb48b0651b1fd627d07f35cab94475c9261"
+bellasha256="6b94968d4ae039c0f1c34980e1285748fb523582fd6e11a327ea24837dc64d1c"
 
 #blender
 blenderversion="4.3.2"
@@ -53,10 +53,10 @@ blenderurl="https://mirrors.ocf.berkeley.edu/blender/release/Blender4.3"
 blendersha256=""
 
 # Flamenco 
-flamenco_version="3.6"
+flamenco_version="3.8.5"
 flamenco_url="https://flamenco.blender.org/downloads/"
 flamenco_tar="flamenco-${flamenco_version}-linux-amd64.tar.gz"
-flamencosha256="545860f477d0fe4c0bd9a3cd0a9547c9eb469e30bfa55ab8dec9d6fd7209ad63"
+flamencosha256="5352ca581127ce514bf9ca64dcf36d94249dbef8a35688bd49df84c37558e4bc"
 
 echo -e "\n\e[32mTurns this machine into a renderfarm\e[0m \e[36m\e[5mhub\e[0m\e[0m"
 echo -e "\e[31mWARNING:\e[0m Mandatory Security hardening will occur to limit internet facing ports"
