@@ -40,7 +40,7 @@ blendersha256=""
 nebula_version="v1.10.3"
 nebula_tar="nebula-linux-amd64.tar.gz"
 nebula_url="https://github.com/slackhq/nebula/releases/download/${nebula_version}"
-nebulasha256="af57ded8f3370f0486bb24011942924b361d77fa34e3478995b196a5441dbf71"
+nebulasha256="99ac335caeb69d02a6b6b00a3d4b5d0a36ec3971df480a1cc50e6db378342955"
 nebula_name="farm"
 
 #flamenco
