@@ -20,7 +20,7 @@ if [[ "$1" == "bypass" ]]; then
     skip="no"
 fi
 
-if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
+if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
     echo "Detected Alma/Rocky Linux" 
 elif ! [ $skip == "yes" ]; then
     if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
@@ -103,7 +103,7 @@ fi
 # abort if selinux is not enforced
 # selinux provides a os level security sandbox and is very restrictive
 # especially important since renderfarm jobs can included arbitrary code execution on the workers
-if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
+if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
     test_selinux=$( getenforce )
     if [ "$test_selinux" == "Disabled" ] || [ "$test_selinux" == "Permissive" ];  then
         echo -e "\n\e[31mFAIL:\e[0m Selinux is disabled, edit /etc/selinux/config"
@@ -129,7 +129,8 @@ if [ -z "$keybundle_url" ]; then
     exit
 fi
 
-if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
+if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+    test_selinux=$( getenforce )
     has_getenforce=$(which getenforce)
     if ! [ -z $has_getenforce ]; then
         getenforce=$(getenforce)
@@ -160,7 +161,7 @@ else
     exit
 fi
 
-if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
+if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
     dnf -y install tar curl initscripts
     curl -O ${blenderurl}/blender-${blenderversion}-linux-x64.tar.xz   
     dnf install -y libXrender.so.1 
@@ -233,7 +234,7 @@ if ! test -d /etc/nebula; then
 fi
 tar --no-same-owner --strip-components 1 -xvf worker.tar -C /etc/nebula
 
-if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
+if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
     chown root:root /etc/nebula/*.crt
     chown root:root /etc/nebula/*.key
 else
@@ -251,7 +252,7 @@ domain=WORKGROUP
 EOF
 chmod go-rwx /etc/nebula/smb_credentials
 
-if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
+if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
 
     # ***FIREWALL rules***
     # adopting highly restrictive rules to protect network
@@ -302,7 +303,7 @@ chmod +x /usr/local/bin/nebula
 mv nebula-cert /usr/local/bin/
 chmod +x /usr/local/bin/nebula-cert
 
-if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
+if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
 	chcon -t bin_t /usr/local/bin/nebula # SELinux security clearance
 fi
 
@@ -424,7 +425,7 @@ fi
 
 # Install blender in home dir of oomerfarm user
 tar -xvf blender-${blenderversion}-linux-x64.tar.xz --directory /home/${user_name}
-if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
+if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
     chown -R ${user_name}:${user_name} /home/${user_name}/blender-${blenderversion}-linux-x64
 else
     chown -R ${user_name}.${user_name} /home/${user_name}/blender-${blenderversion}-linux-x64
@@ -438,7 +439,7 @@ MatchFile="$(echo "${flamencoworkersha256} flamenco-worker" | sha256sum --check)
 if [ "$MatchFile" = "flamenco-worker: OK" ] ; then
     mv flamenco-worker /home/${user_name}
     chmod ugo+x /home/${user_name}/flamenco-worker
-    if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
+    if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
         chcon -t bin_t /home/${user_name}/flamenco-worker # SELinux security clearance
     fi
 
@@ -469,7 +470,7 @@ MatchFile="$(echo "${ffmpegsha256} tools/ffmpeg-linux-amd64" | sha256sum --check
 if [ "$MatchFile" = "tools/ffmpeg-linux-amd64: OK" ] ; then
     mv tools /home/${user_name}
     chmod ugo+x /home/${user_name}/tools/ffmpeg-linux-amd64
-    if [ "$PLATFORM_ID" == "platform:el8" ] || [ "$PLATFORM_ID" == "platform:el9" ]; then
+    if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
         chcon -t bin_t /home/${user_name}/tools/ffmpeg-linux-amd64 # SELinux security clearance
     fi
 else

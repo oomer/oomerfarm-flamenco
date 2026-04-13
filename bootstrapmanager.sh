@@ -394,6 +394,7 @@ chmod go-rw /mnt/${farm_name}/bella
 mkdir -p /mnt/${farm_name}/bella/renders
 chmod go-rw /mnt/${farm_name}/bella/renders
 mkdir -p /mnt/${farm_name}/installers
+chmod go-rw /mnt/${farm_name}/installers
 
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
     chown ${user_name}:${user_name} /mnt/${farm_name}
@@ -417,12 +418,11 @@ fi
 echo -e "\e[32mDownloading Bella path tracer ...\e[0m"
 curl -O ${bella_url}
 MatchFile="$(echo "${bellasha256} bella_cli-${bella_version}-linux.tar.gz" | sha256sum --check)"
-mkdir -p /mnt/${farm_name}/installers
 if [ "$MatchFile" = "bella_cli-${bella_version}-linux.tar.gz: OK" ] ; then
-    cp bella_cli-${bella_version}.tar.gz /mnt/${farm_name}/installers/
-    rm bella_cli-${bella_version}.tar.gz 
+    cp bella_cli-${bella_version}-linux.tar.gz /mnt/${farm_name}/installers/
+    rm bella_cli-${bella_version}-linux.tar.gz 
 else
-    rm bella_cli-${bella_version}.tar.gz 
+    rm bella_cli-${bella_version}-linux.tar.gz 
     echo "\e[31mFAIL:\e[0m bella checksum failed, may be corrupted or malware"
     exit
 fi
