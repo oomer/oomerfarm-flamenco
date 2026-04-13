@@ -37,19 +37,19 @@ blenderurl="https://mirrors.ocf.berkeley.edu/blender/release/Blender4.3"
 blendersha256=""
 
 #nebula
-nebula_version="v1.9.5"
+nebula_version="v1.10.3"
 nebula_tar="nebula-linux-amd64.tar.gz"
 nebula_url="https://github.com/slackhq/nebula/releases/download/${nebula_version}"
 nebulasha256="af57ded8f3370f0486bb24011942924b361d77fa34e3478995b196a5441dbf71"
 nebula_name="farm"
 
 #flamenco
-flamencoworkersha256="f1e464b224245d73d364808d9a72bba2a5967ab59a5855963f57a5e13cc6b16d"
-ffmpegsha256="024e91a47bdcdaee12edbcad106c6db9543d74b791e473f1a5bbba6d5f3a5cc5"
+flamencoworkersha256="0fa32f7d3c83db2f3f43d09b8c8148f6a50307fb6269290b0bf3be20ccd80d07"
+ffmpegsha256="e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99"
 
 #bella
-bella_version="24.6.1"
-bellasha256="3ddcff1994dd3f13a7048472ccf7fbb48b0651b1fd627d07f35cab94475c9261"
+bella_version="25.3.0"
+bellasha256="6b94968d4ae039c0f1c34980e1285748fb523582fd6e11a327ea24837dc64d1c"
 
 # Linux and smb user
 farm_name="oomerfarm"
@@ -406,9 +406,9 @@ fi
 
 # Install Bella path tracer, checksum check in case network storage is compromised
 echo -e "\nInstalling bella_cli"
-cp /mnt/${farm_name}/installers/bella_cli-${bella_version}.tar.gz .
-MatchFile="$(echo "${bellasha256} bella_cli-${bella_version}.tar.gz" | sha256sum --check)"
-if [ "$MatchFile" = "bella_cli-${bella_version}.tar.gz: OK" ] ; then
+cp /mnt/${farm_name}/installers/bella_cli-${bella_version}-linux.tar.gz .
+MatchFile="$(echo "${bellasha256} bella_cli-${bella_version}-linux.tar.gz" | sha256sum --check)"
+if [ "$MatchFile" = "bella_cli-${bella_version}-linux.tar.gz: OK" ] ; then
     tar -xvf bella_cli-${bella_version}.tar.gz 
     chmod +x bella_cli
     mv bella_cli /usr/local/bin
