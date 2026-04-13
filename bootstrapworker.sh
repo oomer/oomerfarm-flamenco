@@ -193,7 +193,7 @@ if [[ "$keybundle_url" == *"https://drive.google.com/file/d"* ]]; then
     head=$(curl -s --head ${keybundle_url} | grep "content-length")
     if [[ "$head" == *"content-length"* ]]; then
         # Extract Google uuid 
-        googlefileid=$(echo $keybundle_url | egrep -o '(\w|-){26,}')
+        googlefileid=$(echo $keybundle_url | grep -E -o '(\w|-){26,}')
         echo $googlefileid
         head2=$(curl -s --head -L "https://drive.google.com/uc?export=download&id=${googlefileid}" | grep "content-length")
         if [[ "$head2" == *"content-length"* ]]; then
