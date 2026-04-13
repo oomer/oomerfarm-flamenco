@@ -42,15 +42,14 @@ fi
 
 public_ip=$(curl ifconfig.me)
 
-# Bella path traeer
+# Bella path tracer
 bella_version="25.3.0"
-bella_url="https://downloads.bellarender.com/bella_cli-${bella_version}.tar.gz"
+bella_url="https://downloads.bellarender.com/bella_cli-${bella_version}-linux.tar.gz"
 bellasha256="6b94968d4ae039c0f1c34980e1285748fb523582fd6e11a327ea24837dc64d1c"
-
 #blender
-blenderversion="4.3.2"
-blenderurl="https://mirrors.ocf.berkeley.edu/blender/release/Blender4.3"
-blendersha256=""
+blenderversion="5.1.0"
+blenderurl="https://www.blender.org/download/release/Blender5.1/blender-5.1.0-linux-x64.tar.xz"
+blendersha256="a3879e67962f04c8c7b5e877c2af0fdcff85cd8fffa971a351db1c9c57a059fa"
 
 # Flamenco 
 flamenco_version="3.8.5"
@@ -391,7 +390,9 @@ fi
 
 mkdir -p /mnt/${farm_name}
 mkdir -p /mnt/${farm_name}/bella
+chmod go-rw /mnt/${farm_name}/bella
 mkdir -p /mnt/${farm_name}/bella/renders
+chmod go-rw /mnt/${farm_name}/bella/renders
 mkdir -p /mnt/${farm_name}/installers
 
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
@@ -415,9 +416,9 @@ fi
 # Cache Bella Installer for workers on farm
 echo -e "\e[32mDownloading Bella path tracer ...\e[0m"
 curl -O ${bella_url}
-MatchFile="$(echo "${bellasha256} bella_cli-${bella_version}.tar.gz" | sha256sum --check)"
+MatchFile="$(echo "${bellasha256} bella_cli-${bella_version}-linux.tar.gz" | sha256sum --check)"
 mkdir -p /mnt/${farm_name}/installers
-if [ "$MatchFile" = "bella_cli-${bella_version}.tar.gz: OK" ] ; then
+if [ "$MatchFile" = "bella_cli-${bella_version}-linux.tar.gz: OK" ] ; then
     cp bella_cli-${bella_version}.tar.gz /mnt/${farm_name}/installers/
     rm bella_cli-${bella_version}.tar.gz 
 else
@@ -541,7 +542,7 @@ echo -e "\n\e[32mO${farm_name} setup completed.\e[0m"
 echo -e "Remaining steps:"
 echo -e "Enter \e[36m\e[5m${public_ip}\e[0m\e[0m when asked for \e[32mhub\e[0m address"
 echo -e "1. \e[32m[DONE]\e[0m Made secret keys on a trusted desktop/laptop"
-echo -e "2. \e[32m[YOU ARE HERE]\e[0m on this computer you ran \e[36mbash bootstraphub.sh\e[0m"
+echo -e "2. \e[32m[YOU ARE HERE]\e[0m on this computer you ran \e[36mbash bootstrapmanager.sh\e[0m"
 echo -e "\e[36m[TODO] Get cloud Linux machines, ssh using PKI only\e[0m"
 echo -e "3. Run \e[32mbash bootstrapworker.sh\e[0m"
 echo -e "4. Lastly from desktop/laptop, run \e[36mbash bridgeoomerfarm.sh\e[0m to join VPN, follow instructions"

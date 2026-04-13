@@ -15,7 +15,7 @@ lighthouse_internet_ip_default="x.x.x.x"
 lighthouse_nebula_ip="10.88.0.1"
 lighthouse_internet_port="42042"
 # additional lighthouses must be added manually
-nebula_version="v1.9.5"
+nebula_version="v1.10.3"
 nebula_url="https://github.com/slackhq/nebula/releases/download"
 nebula_config_create_path=""
 nebula_config_path=""
@@ -23,17 +23,17 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     nebularelease="nebula-linux-amd64.tar.gz"
     nebulasha256="af57ded8f3370f0486bb24011942924b361d77fa34e3478995b196a5441dbf71"
     nebulaexe="nebula"
-    nebulaexesha256="b09f11bc185aa5534079f64c9ab43137c2c7768330b3f3db422b11fcd58d6018"
+    nebulaexesha256="8fc30c9b1cd102c4f406d8ece66f1f4a01e4630f724afc9cc32c2ba150fd67af"
 elif [[ "$OSTYPE" == "darwin"* ]]; then
     nebularelease="nebula-darwin.zip"
-    nebulasha256="891584c4288e031b0787cfd5ac1da4565caf1627bd934d94b696a340ad92f0d7"
+    nebulasha256="75f538a2ada19487f81d67a9d87f6db02040e6aed72f50f94a756597a0d5abbd"
     nebulaexe="nebula"
-    nebulaexesha256="47faf818ee0ada55bb260065c837e218018f2e1bb6ad673e938b6b0d998c4c6f"
+    nebulaexesha256="dd337ccc03d256ce3a7bc6f3d24f16ed9396c71c02f55977506a40f50dd41acc"
 elif [[ "$OSTYPE" == "msys"* ]]; then
     nebularelease="nebula-windows-amd64.zip"
-    nebulasha256="5a42e4600e8a47db2b103c607d95509c7ae403f56e2952d05089f492e53bcebb"
+    nebulasha256="7e8f26eef9394c842d4eb73610e3e63b965a93b803e366eb42c9b548bd1a70b8"
     nebulaexe="nebula.exe"
-    nebulaexesha256="48ef4a2163fa2eac5ae51d3b35c0f8100a1f43b19b4f7dcf7a6a35b21302baff"
+    nebulaexesha256="ecd48bc5a17275521db98d55fdffb22be2202418ba6d9f79f9fe871a94100821"
 else
     echo -e "FAIL: Operating system should either be Linux, MacOS or Windows with msys"
     exit

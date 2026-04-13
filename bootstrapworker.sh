@@ -32,9 +32,9 @@ else
 fi
 
 #blender
-blenderversion="4.3.2"
-blenderurl="https://mirrors.ocf.berkeley.edu/blender/release/Blender4.3"
-blendersha256=""
+blenderversion="5.1.0"
+blenderurl="https://www.blender.org/download/release/Blender5.1/blender-5.1.0-linux-x64.tar.xz"
+blendersha256="a3879e67962f04c8c7b5e877c2af0fdcff85cd8fffa971a351db1c9c57a059fa"
 
 #nebula
 nebula_version="v1.10.3"
@@ -409,12 +409,15 @@ echo -e "\nInstalling bella_cli"
 cp /mnt/${farm_name}/installers/bella_cli-${bella_version}-linux.tar.gz .
 MatchFile="$(echo "${bellasha256} bella_cli-${bella_version}-linux.tar.gz" | sha256sum --check)"
 if [ "$MatchFile" = "bella_cli-${bella_version}-linux.tar.gz: OK" ] ; then
-    tar -xvf bella_cli-${bella_version}.tar.gz 
-    chmod +x bella_cli
-    mv bella_cli /usr/local/bin
-    rm bella_cli-${bella_version}.tar.gz 
+    tar -xvf bella_cli-${bella_version}-linux.tar.gz
+    chmod +x bella_cli/bella_cli
+    mv bella_cli/bella_cli /usr/local/bin
+    mv bella_cli/libdl_usd_ms.so /usr/local/bin
+    mv bella_cli/usd /usr/local/bin
+
+    rm bella_cli-${bella_version}-linux.tar.gz
 else
-    rm bella_cli-${bella_version}.tar.gz 
+    rm bella_cli-${bella_version}-linux.tar.gz
     echo "\e[31mFAIL:\e[0m bella checksum failed, may be corrupted or malware"
     exit
 fi

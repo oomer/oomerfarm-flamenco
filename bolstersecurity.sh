@@ -4,8 +4,10 @@
 # - creates repository of keys in same dir as this script under .oomer
 # - cross-platform bash script, runs natively on MacOS/Linux requires git-bash on Windows
 # 1. run once to generate keys for 1 farm server, 100 workers, 1 user
-# 2. run again to 
-nebula_version="v1.9.5"
+# 2. run again to generate more keys
+nebula_version="v1.10.3"
+
+# IP range of your private VPN
 octet0=10
 octet1=88
 mask=16
@@ -38,13 +40,13 @@ if ! ( test -f ".oomer/bin/nebula-cert" ); then
 	echo -e "\nDownloading Nebula ${nebula_version} ..."
 	if [[ "$OSTYPE" == "linux-gnu"* ]]; then
 		nebularelease="nebula-linux-amd64.tar.gz"
-		nebulasha256="af57ded8f3370f0486bb24011942924b361d77fa34e3478995b196a5441dbf71"
+		nebulasha256="99ac335caeb69d02a6b6b00a3d4b5d0a36ec3971df480a1cc50e6db378342955"
 	elif [[ "$OSTYPE" == "darwin"* ]]; then
 		nebularelease="nebula-darwin.zip"
-		nebulasha256="891584c4288e031b0787cfd5ac1da4565caf1627bd934d94b696a340ad92f0d7"
+		nebulasha256="75f538a2ada19487f81d67a9d87f6db02040e6aed72f50f94a756597a0d5abbd"
 	elif [[ "$OSTYPE" == "msys"* ]]; then
 		nebularelease="nebula-windows-amd64.zip"
-		nebulasha256="5a42e4600e8a47db2b103c607d95509c7ae403f56e2952d05089f492e53bcebb"
+		nebulasha256="7e8f26eef9394c842d4eb73610e3e63b965a93b803e366eb42c9b548bd1a70b8"
 	else 
 		echo -e "FAIL: Operating system should either be Linux, MacOS or Windows with msys"
 		exit
