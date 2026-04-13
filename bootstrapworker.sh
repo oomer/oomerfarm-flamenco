@@ -33,8 +33,8 @@ fi
 
 #blender
 blenderversion="5.1.0"
-blenderurl="https://www.blender.org/download/release/Blender5.1/blender-5.1.0-linux-x64.tar.xz"
-blendersha256="a3879e67962f04c8c7b5e877c2af0fdcff85cd8fffa971a351db1c9c57a059fa"
+blenderurl="https://mirrors.ocf.berkeley.edu/blender/release/Blender5.1"
+blendersha256="7f2475990613c8d4c7ac5697803fcf40d09541c1fd8c23936f4b07a169a920c7"
 
 #nebula
 nebula_version="v1.10.3"
