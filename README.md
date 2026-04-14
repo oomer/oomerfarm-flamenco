@@ -68,6 +68,18 @@
         - http://10.88.0.1:8080 from your workstation set Shared Storage to /mnt/oomerfarm/flamenco
         - smb/cifs user:oomerfarm pass:oomerfarm
 
+rough outline of things to be done on manager server 
+after running bootstrapmanager.sh, heed warnings and follow instructions.
+```   
+ssh root@x.x.x.x
+dnf update -y 
+dnf install git -y
+git clone https://github.com/oomer/oomerfarm-flamenco.git 
+cd oomerfarm-flamenco
+bash bootstrapmanager.sh
+reboot
+```
+
 4. <span style="color:green;">**bash bootstrapworker.sh**</span> on <span style="color:cyan;">Computer 1-100</span> hourly rentals<sup>(Linux)</sup> [ Fresh Linux install only, messes production machine ]
 
         - joins Nebula overlay network
@@ -75,7 +87,15 @@
         - installs Blender and bellarender
         - [NOTE] ensure worker names are numerically unique workerxxx to avoid IP address clash
         - [SECURITY NOTE] each worker has ALL worker keys to simplify mass deployment. They are trusted as a group. 
-
+rough outline of things to be done on each worker node 
+after running bootstrapworker.sh, heed warnings and follow instructions.
+```
+dnf update -y
+dnf install git -y
+git clone https://github.com/oomer/oomerfarm-flamenco.git 
+cd oomerfarm-flamenco
+bash bootstrapworker.sh
+```
 5. <span style="color:green;">Blender</span> 
         - Blender install Flamenco add-on from http://10.88.0.1:8080 
         - Set Manager URL to http://10.88.0.1:8080 
@@ -92,11 +112,14 @@
 - bootstrapworker.sh <sup>Linux render worker</sup>
 - join.sh <sup>Mac/Win/Linux</sup>
 
+## Tips
+
+- reboot after bootstrap scripts
+- Macos over smb:// disconnects in weird ways and may require reboot
+- Store your farm.encrypted.keys and worker.encrypted.keys on Google Drive. share , anyone with a link
+
 ## Compute Charge Caveat
 - You will be charged the the hour or by the month if you forget to destroy your Virtual Machines. Remember to destroy.
-- [TODO] Add auto destroy timer ( Google preemptible VMs only )
 
 ## Security note
 - not all cloud vendors scrub their drives after each rental allowing the next renter to possible retrieve passwords and keys present on the disk
-- [TODO] Add the ability to encrypt the disk at rest
-- [TODO] Add dead man's script, that on shutdown, keys are wiped ( Since cloud may use COW filesystem, this is weak sauce)
