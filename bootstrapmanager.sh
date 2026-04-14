@@ -48,8 +48,8 @@ bella_url="https://downloads.bellarender.com/bella_cli-${bella_version}-linux.ta
 bellasha256="6b94968d4ae039c0f1c34980e1285748fb523582fd6e11a327ea24837dc64d1c"
 #blender
 blenderversion="5.1.0"
-blenderurl="https://www.blender.org/download/release/Blender5.1/blender-5.1.0-linux-x64.tar.xz"
-blendersha256="a3879e67962f04c8c7b5e877c2af0fdcff85cd8fffa971a351db1c9c57a059fa"
+blenderurl="https://mirrors.ocf.berkeley.edu/blender/release/Blender5.1"
+blendersha256="7f2475990613c8d4c7ac5697803fcf40d09541c1fd8c23936f4b07a169a920c7"
 
 # Flamenco 
 flamenco_version="3.8.5"
@@ -389,21 +389,15 @@ elif [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; t
 fi  
 
 mkdir -p /mnt/${farm_name}
-mkdir -p /mnt/${farm_name}/bella
-chmod go-rw /mnt/${farm_name}/bella
-mkdir -p /mnt/${farm_name}/bella/renders
-chmod go-rw /mnt/${farm_name}/bella/renders
+mkdir -p /mnt/${farm_name}/renders
+chmod go-rw /mnt/${farm_name}/renders
 mkdir -p /mnt/${farm_name}/installers
 chmod go-rw /mnt/${farm_name}/installers
 
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
     chown ${user_name}:${user_name} /mnt/${farm_name}
-    chown ${user_name}:${user_name} /mnt/${farm_name}/bella
-    chown ${user_name}:${user_name} /mnt/${farm_name}/bella/renders
 elif [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
     chown ${user_name}.${user_name} /mnt/${farm_name}
-    chown ${user_name}.${user_name} /mnt/${farm_name}/bella
-    chown ${user_name}.${user_name} /mnt/${farm_name}/bella/renders
 fi 
 
 # SELinux beat me again because missed chcon and could mount but not see samba shares contents

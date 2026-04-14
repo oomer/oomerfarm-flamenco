@@ -144,6 +144,7 @@ if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; the
         dnf -y install firewalld
     fi
     dnf install -y mesa-vulkan-drivers mesa-libGL
+    dnf install libXfixes libXrender mesa-libGL libXxf86vm libxkbcommon libSM libICE libXi -y
     dnf install -y cifs-utils
     #dnf install -y fuse
     systemctl enable --now firewalld
