@@ -3,7 +3,7 @@ const JOB_TYPE = {
     settings: [
         { key: "bsz", type: "string", subtype: "file_path", required: true, 
           description: "bsz file to render"},
-        { key: "outdir", type: "string", subtype: "dir_path", required: true, 
+        { key: "outdir", type: "string", subtype: "dir_path", required: true, default: "/mnt/oomerfarm/flamenco",
           description: "Output dir for rendered images"},
         { key: "resx", type: "int32", default: 800 },
         { key: "resy", type: "int32", default: 800 },
@@ -12,22 +12,14 @@ const JOB_TYPE = {
 
 function compileJob(job) {
     const settings = job.settings;
-    let bsz = JSON.stringify(job.settings.bsz)
-    bsz = "-i:"+bsz;
-    //bsz = "-i:"+bsz.replace(/\/\/\.\.\/\.\.\/Volumes/, "/mnt"); 
-    bsz = bsz.replace(/['"]/g, '');
-    print("bsz",bsz)  
-
-    let outdir = JSON.stringify(job.settings.outdir)
-    outdir = "-od:"+outdir;
-    //outdir = "-od:"+outdir.replace(/\/\/\.\.\/\.\.\/Volumes/, "/mnt"); 
-    outdir = outdir.replace(/['"]/g, '');
-    print("outdir",outdir)  
-
+    const bszArg = "-i:" + settings.bsz;
+    const outdirArg = "-od:" + settings.outdir;
+    const resArg = `-res:${settings.resx}x${settings.resy}`;
+	
     const bellaTask = author.Task("bella", "misc");
     bellaTask.addCommand(author.Command("exec", 
     { exe: "/usr/local/bin/bella_cli",
-        args: [ bsz, outdir, "-res:200x200"],
+        args: [ bszArg, outdirArg, resArg],
         } ));
     job.addTask(bellaTask);
 }
