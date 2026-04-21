@@ -4,8 +4,8 @@
 # Turns this machine into a Flamenco renderfarm worker 
 
 # Tested on AWS, Azure, Google, Oracle, Vultr, Digital Ocaan, Linode, Heztner, Server-Factory, Crunchbits
-# Shared storage: NFS from hub (10.88.0.1:/mnt/oomerfarm by default). Unprivileged LXC may still need
-# host-level mounts; see your hypervisor docs if mount fails inside the container.
+# Shared storage: SMB via rclone FUSE (userspace) → /mnt/oomerfarm — no kernel CIFS/NFS mount.
+# Unprivileged LXC: enable FUSE (e.g. Proxmox features: fuse=1). Hub SMB share name = oomerfarm.
 
 #Helper to discover distribution
 source /etc/os-release
@@ -30,6 +30,22 @@ else
     echo -e "\e[31mFAIL:\e[0m Unsupported operating system $os_name"
     exit
 fi
+
+# True if running inside an LXC guest (host SELinux applies; guest enforcing check is often wrong).
+is_lxc() {
+    if command -v systemd-detect-virt >/dev/null 2>&1; then
+        case "$(systemd-detect-virt 2>/dev/null || true)" in
+            lxc|lxc-libvirt) return 0 ;;
+        esac
+    fi
+    if tr '\0' '\n' < /proc/1/environ 2>/dev/null | grep -q '^container=lxc$'; then
+        return 0
+    fi
+    if grep -qE '(^|/)lxc(/|\.)|lxc\.payload' /proc/1/cgroup 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
 
 ### Ensure max security
 # disallow ssh password authentication
@@ -58,7 +74,9 @@ bellasha256="6b94968d4ae039c0f1c34980e1285748fb523582fd6e11a327ea24837dc64d1c"
 # Linux user (uid/gid 3000 should match hub export ownership)
 farm_name="oomerfarm"
 user_name="oomerfarm"
-linux_password="oomerfarm" 
+linux_password="oomerfarm"
+# rclone remote name (see /etc/rclone/rclone.conf and rclone-farm.service)
+rclone_remote="farmshare"
 
 #worker_auto_shutdown=0
 worker_name_default=$(hostname)
@@ -106,15 +124,18 @@ fi
 # abort if selinux is not enforced
 # selinux provides a os level security sandbox and is very restrictive
 # especially important since renderfarm jobs can included arbitrary code execution on the workers
-if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-    test_selinux=$( getenforce )
-    if [ "$test_selinux" == "Disabled" ] || [ "$test_selinux" == "Permissive" ];  then
-        echo -e "\n\e[31mFAIL:\e[0m Selinux is disabled, edit /etc/selinux/config"
-        echo "==================================================="
-        echo "Change SELINUX=disabled to SELINUX=enforcing"
-        echo -e "then \e[5mREBOOT\e[0m ( SELinux chcon on boot drive takes awhile)"
-        echo "=================================================="
-        exit
+# skip on LXC: policy/enforcement is usually host-managed; guest getenforce is not the same as bare metal
+if ! is_lxc; then
+    if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+        test_selinux=$( getenforce )
+        if [ "$test_selinux" == "Disabled" ] || [ "$test_selinux" == "Permissive" ];  then
+            echo -e "\n\e[31mFAIL:\e[0m Selinux is disabled, edit /etc/selinux/config"
+            echo "==================================================="
+            echo "Change SELINUX=disabled to SELINUX=enforcing"
+            echo -e "then \e[5mREBOOT\e[0m ( SELinux chcon on boot drive takes awhile)"
+            echo "=================================================="
+            exit
+        fi
     fi
 fi
 
@@ -141,22 +162,35 @@ if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; the
     firewalld_status=$(systemctl status firewalld)
     echo -e "\e[32mDiscovered $os_name\e[0m"
     dnf -y update
-    dnf -y install tar
+    dnf -y install tar openssl xz
     #dnf -y install sysstat # needed for /usr/local/bin/oomerfarm_shutdown.sh
     if [ -z "$firewalld_status" ]; then
         dnf -y install firewalld
     fi
     dnf install -y mesa-vulkan-drivers mesa-libGL
     dnf install libXfixes libXrender mesa-libGL libXxf86vm libxkbcommon libSM libICE libXi -y
-    dnf install -y nfs-utils
-    #dnf install -y fuse
+    dnf install -y fuse3
+    dnf install -y epel-release 2>/dev/null || true
+    dnf install -y rclone 2>/dev/null || true
+    if ! command -v rclone >/dev/null 2>&1; then
+        echo -e "\e[33mInstalling rclone from rclone.org (not in repos)...\e[0m"
+        dnf install -y unzip
+        curl -sSL "https://downloads.rclone.org/rclone-current-linux-amd64.zip" -o /tmp/rclone.zip
+        unzip -qo /tmp/rclone.zip -d /tmp
+        cp /tmp/rclone-*-linux-amd64/rclone /usr/local/bin/rclone
+        chmod 755 /usr/local/bin/rclone
+        rm -rf /tmp/rclone.zip /tmp/rclone-*-linux-amd64
+        if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+            chcon -t bin_t /usr/local/bin/rclone 2>/dev/null || true
+        fi
+    fi
     systemctl enable --now firewalld
 elif [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
     # [ TODO ] securiyt check apparmor 
     echo -e "\e[32mDiscovered $os_name\e[0m. Support of Ubuntu is alpha quality"
     apt -y update
     #apt -y install sysstat # needed for /usr/local/bin/oomerfarm_shutdown.sh
-    apt -y install nfs-common
+    apt -y install fuse3 rclone
     apt -y install curl
     apt -y install mesa-vulkan-drivers 
     apt -y install libgl1
@@ -246,6 +280,11 @@ else
 fi
 rm worker.tar
 rm -f /etc/nebula/smb_credentials
+
+# FUSE: allow rclone --allow-other so uid 3000 (flamenco) sees the mount
+if [ -f /etc/fuse.conf ] && ! grep -q '^user_allow_other' /etc/fuse.conf; then
+    sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf || true
+fi
 
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
 
@@ -383,36 +422,78 @@ chmod go-rwx /etc/nebula/config.yml
 systemctl enable nebula.service
 systemctl restart nebula.service
 
-# NFS mount (hub must export /mnt/${farm_name} to 10.88.0.0/16). Nebula comes up before first mount.
-mkdir -p /mnt/${farm_name}
-nfs_fstab="${lighthouse_nebula_ip}:/mnt/${farm_name} /mnt/${farm_name} nfs nfsvers=4.1,rw,noauto,x-systemd.automount,x-systemd.device-timeout=60,_netdev 0 0"
-# Remove legacy SMB fstab line from older bootstrap versions
-sed -i '\|^//'"${lighthouse_nebula_ip}"'/oomerfarm /mnt/oomerfarm cifs|d' /etc/fstab 2>/dev/null || true
-grep -qxF "${nfs_fstab}" /etc/fstab || echo "${nfs_fstab}" >> /etc/fstab
+# Strip kernel NFS / CIFS fstab lines (we use rclone FUSE only)
+sed -i '\| /mnt/'"${farm_name}"' nfs |d' /etc/fstab 2>/dev/null || true
+sed -i '\|^//'"${lighthouse_nebula_ip}"'/'"${farm_name}"' /mnt/'"${farm_name}"' cifs|d' /etc/fstab 2>/dev/null || true
 
-echo "Sleeping for 10 seconds for mount to finish"
-if ! ( test -f /mnt/${farm_name}/installers/bella_cli-${bella_version}.tar.gz ); then
-    systemctl daemon-reload
-    echo "Mounting network storage"
-    mount /mnt/oomerfarm
-    echo "Sleeping for 10 seconds for mount to finish"
-    sleep 10
+mkdir -p /mnt/${farm_name}
+
+# rclone SMB config (same hub/share as kernel CIFS used: //10.88.0.1/oomerfarm)
+mkdir -p /etc/rclone
+chmod 700 /etc/rclone
+export RCLONE_CONFIG=/etc/rclone/rclone.conf
+rclone config delete "${rclone_remote}" 2>/dev/null || true
+rclone config create "${rclone_remote}" smb host "${lighthouse_nebula_ip}" user "${user_name}" pass "${linux_password}" domain WORKGROUP --non-interactive 2>/dev/null || \
+rclone config create "${rclone_remote}" smb host "${lighthouse_nebula_ip}" user "${user_name}" pass "${linux_password}" domain WORKGROUP
+chmod 600 /etc/rclone/rclone.conf
+
+RCLONE_BIN="$(command -v rclone)"
+FUSERMOUNT_BIN="$(command -v fusermount3 2>/dev/null || command -v fusermount 2>/dev/null || echo fusermount3)"
+
+if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+    setsebool -P virt_use_fuse 1 2>/dev/null || true
+fi
+
+cat <<EOF > /etc/systemd/system/rclone-farm.service
+[Unit]
+Description=rclone FUSE mount hub SMB at /mnt/${farm_name}
+After=network-online.target nebula.service
+Wants=network-online.target nebula.service
+
+[Service]
+Type=simple
+ExecStart=${RCLONE_BIN} mount ${rclone_remote}:${farm_name} /mnt/${farm_name} --config /etc/rclone/rclone.conf --allow-other --vfs-cache-mode writes --dir-cache-time 5s --poll-interval 1m --log-level NOTICE
+ExecStop=${FUSERMOUNT_BIN} -zu /mnt/${farm_name}
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable rclone-farm.service
+systemctl restart rclone-farm.service
+
+# Must match the tarball name under installers/ on the hub (same as cp below).
+bella_installer="bella_cli-${bella_version}-linux.tar.gz"
+echo "Waiting for rclone mount of //${lighthouse_nebula_ip}/${farm_name} ..."
+for _i in $(seq 1 30); do
+    if test -f "/mnt/${farm_name}/installers/${bella_installer}"; then
+        break
+    fi
+    sleep 2
+done
+if ! test -f "/mnt/${farm_name}/installers/${bella_installer}"; then
+    echo -e "\e[31mFAIL:\e[0m rclone mount did not expose hub installers path (expected installers/${bella_installer})."
+    echo "Check: systemctl status rclone-farm; journalctl -u rclone-farm -b; rclone ls ${rclone_remote}:${farm_name}/installers --config /etc/rclone/rclone.conf"
+    exit 1
 fi
 
 # Install Bella path tracer, checksum check in case network storage is compromised
 echo -e "\nInstalling bella_cli"
-cp /mnt/${farm_name}/installers/bella_cli-${bella_version}-linux.tar.gz .
-MatchFile="$(echo "${bellasha256} bella_cli-${bella_version}-linux.tar.gz" | sha256sum --check)"
-if [ "$MatchFile" = "bella_cli-${bella_version}-linux.tar.gz: OK" ] ; then
-    tar -xvf bella_cli-${bella_version}-linux.tar.gz
+cp "/mnt/${farm_name}/installers/${bella_installer}" .
+MatchFile="$(echo "${bellasha256} ${bella_installer}" | sha256sum --check)"
+if [ "$MatchFile" = "${bella_installer}: OK" ] ; then
+    tar -xvf "${bella_installer}"
     chmod +x bella_cli/bella_cli
     mv bella_cli/bella_cli /opt/${farm_name}/bin
     mv bella_cli/libdl_usd_ms.so /opt/${farm_name}/bin
     mv bella_cli/usd /opt/${farm_name}/bin
 
-    rm bella_cli-${bella_version}-linux.tar.gz
+    rm -f "${bella_installer}"
 else
-    rm bella_cli-${bella_version}-linux.tar.gz
+    rm -f "${bella_installer}"
     echo "\e[31mFAIL:\e[0m bella checksum failed, may be corrupted or malware"
     exit
 fi
@@ -440,7 +521,8 @@ if [ "$MatchFile" = "flamenco-worker: OK" ] ; then
 cat <<EOF > /etc/systemd/system/flamenco-worker.service
 [Unit]
 Description=flamenco-worker service
-After=network.target
+After=network.target rclone-farm.service
+Wants=rclone-farm.service
 
 [Service]
 User=${user_name}
