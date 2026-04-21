@@ -7,6 +7,7 @@
 # - [ ] a Nebula VPN node with limited ACL with private ip address of 10.88.0.1/16
 # - [ ] Nebula firewall rules limited to server exposure
 # - [ ] samba share as oomerfarm rooted at /mnt/oomerfarm bound to 10.88.0.1:445
+# - [ ] nfs export of same /mnt/oomerfarm to 10.88.0.0/16 (firewall: nebula zone + Nebula 2049/tcp for farm)
 # - [ ] SELinux enabled ( Thus limited to Alma/RockyLinux, AppArmor for Debian/Ubuntu in future release)
 # - [ ] firewalld blocking all internet ports except 22/tcp and 42042/udp
 # - [ ] decryption of Nebula keys uses ephemeral passphrase 
@@ -20,6 +21,7 @@ os_name=$(awk -F= '$1=="NAME" { print $2 ;}' /etc/os-release)
 # Nebula VPN
 nebula_name="farm"
 nebula_ip="10.88.0.1"
+nebula_subnet="10.88.0.0/16"
 nebula_public_port="42042"
 nebula_version="v1.10.3"
 nebulasha256="99ac335caeb69d02a6b6b00a3d4b5d0a36ec3971df480a1cc50e6db378342955"
@@ -50,7 +52,6 @@ bellasha256="6b94968d4ae039c0f1c34980e1285748fb523582fd6e11a327ea24837dc64d1c"
 blenderversion="5.1.0"
 blenderurl="https://mirrors.ocf.berkeley.edu/blender/release/Blender5.1"
 blendersha256="7f2475990613c8d4c7ac5697803fcf40d09541c1fd8c23936f4b07a169a920c7"
-
 # Flamenco 
 flamenco_version="3.8.5"
 flamenco_url="https://flamenco.blender.org/downloads/"
@@ -128,7 +129,6 @@ fi
 # disallow ssh password authentication
 sed -i -E 's/#?PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config 
 
-
 if id "${user_name}" &>/dev/null; then
   echo "User ${user_name} exists"
 else
@@ -138,6 +138,9 @@ else
 fi
 #- [TODO] add feature to set linux_password at runtime avoiding password in code
 echo "${user_name}:${linux_password}" | chpasswd
+mkdir -p /opt/${farm_name}/bin
+chown -R ${user_name}:${user_name} /opt/${farm_name}
+
 
 # Install Nebula VPN
 mkdir -p /etc/nebula
@@ -151,15 +154,14 @@ else
     echo -e "\e[31mFAIL:\e[0m nebula-linux-amd64.tar.gz checksum failed, file possibly maliciously altered on github"
     exit
 fi
-mv nebula /usr/local/bin/nebula
-chmod +x /usr/local/bin/
-mv nebula-cert /usr/local/bin/
-chmod +x /usr/local/bin/nebula-cert
-rm -f nebula-linux-amd64.tar.gz
+mv nebula /opt/${farm_name}/bin/nebula
+chmod +x /opt/${farm_name}/bin/nebula
+rm nebula-cert
+rm nebula-linux-amd64.tar.gz
 
 # SELinux extra security
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-    chcon -t bin_t /usr/local/bin/nebula # SELinux security clearance
+    chcon -t bin_t /opt/${farm_name}/bin/nebula # SELinux security clearance
 fi
 
 # Get keys.encrypted from public url, Google Drive links are proxied
@@ -300,6 +302,11 @@ firewall:
       groups:
         - farm
 
+    - port: 2049
+      proto: tcp
+      groups:
+        - farm
+
     - port: 8080
       proto: tcp
       groups:
@@ -315,23 +322,20 @@ After=network.target
 Type=simple
 Restart=always
 RestartSec=30
-ExecStart=/usr/local/bin/nebula -config /etc/nebula/config.yml
+ExecStart=/opt/${farm_name}/bin/nebula -config /etc/nebula/config.yml
 
 [Install]
 WantedBy=multi-user.target
 EOF
 systemctl enable --now nebula
 
-
 # Install Samba
 echo -e "\n\e[32mInstalling File Server ( Samba )...\e[0m"
 
 if [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
-    apt -y install cifs-utils
-    apt -y install samba
+    apt -y install cifs-utils openssl samba nfs-kernel-server
 elif [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-    dnf -y install cifs-utils
-    dnf -y install samba
+    dnf -y install cifs-utils openssl samba nfs-utils
 fi
 cat <<EOF > /etc/samba/smb.conf
 ntlm auth = mschapv2-and-ntlmv2-only
@@ -383,6 +387,7 @@ elif [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; t
     firewall-cmd -q --zone nebula --add-interface nebula_tun --permanent
     firewall-cmd -q --zone nebula --add-service ssh --permanent # Allow ssh connections over VPN
     firewall-cmd -q --zone nebula --add-port 445/tcp --permanent # Allow smb/cifs connections over VPN
+    firewall-cmd -q --zone nebula --add-service nfs --permanent # NFS (2049 + rpc for nfs-utils) on VPN iface only
     firewall-cmd -q --zone nebula --add-port 8080/tcp --permanent # Allow http sccess
 
     firewall-cmd -q --reload
@@ -404,6 +409,26 @@ fi
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
     chcon -R -t samba_share_t /mnt/${farm_name}/
 fi
+
+# NFS server — same tree as Samba; only ${nebula_subnet} may mount (see /etc/exports).
+# Host firewall: nfs is opened only on the nebula zone (nebula_tun), not on public.
+echo -e "\n\e[32mConfiguring NFS server (export /mnt/${farm_name} → ${nebula_subnet})...\e[0m"
+cat <<EOF > /etc/exports
+# Managed by bootstrapmanager.sh — do not hand-edit without syncing Nebula/firewall
+/mnt/${farm_name} ${nebula_subnet}(rw,sync,no_subtree_check)
+EOF
+if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+    setsebool -P nfs_export_all_rw 1
+    # Ensure server packages are present and systemd has unit files (enables after a fresh dnf).
+    dnf -y install nfs-utils rpcbind
+    systemctl daemon-reload
+    systemctl enable --now rpcbind
+    systemctl enable --now nfs-server
+elif [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
+    systemctl daemon-reload
+    systemctl enable --now nfs-kernel-server
+fi
+exportfs -rav
 
 # Set password, confirm password
 (echo ${linux_password}; echo ${linux_password}) | smbpasswd -a ${user_name} -s
@@ -434,21 +459,21 @@ else
     exit
 fi
 
-echo flamenco-${flamenco_version}-linux-amd64/flamenco-manager /home/${user_name}/flamenco-manager
-cp flamenco-${flamenco_version}-linux-amd64/flamenco-manager /home/${user_name}/flamenco-manager
+echo flamenco-${flamenco_version}-linux-amd64/flamenco-manager /opt/${farm_name}/flamenco-manager
+cp flamenco-${flamenco_version}-linux-amd64/flamenco-manager /opt/${farm_name}/flamenco-manager
 cp flamenco-${flamenco_version}-linux-amd64/flamenco-worker /mnt/${farm_name}/installers
 cp -r flamenco-${flamenco_version}-linux-amd64/tools /mnt/${farm_name}/installers/tools
-cp -r scripts /home/${user_name}/
+cp -r scripts /opt/${farm_name}/
 
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-    chown ${user_name}:${user_name}  /home/${user_name}/flamenco-manager
-    chown -R ${user_name}:${user_name}  /home/${user_name}/scripts
+    chown ${user_name}:${user_name}  /opt/${farm_name}/flamenco-manager
+    chown -R ${user_name}:${user_name}  /opt/${farm_name}/scripts
 elif [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
-    chown ${user_name}.${user_name}  /home/${user_name}/flamenco-manager
-    chown -R ${user_name}.${user_name}  /home/${user_name}/scripts
+    chown ${user_name}.${user_name}  /opt/${farm_name}/flamenco-manager
+    chown -R ${user_name}.${user_name}  /opt/${farm_name}/scripts
 fi
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-    chcon -t bin_t /home/${user_name}/flamenco-manager # SELinux security clearance
+    chcon -t bin_t /opt/${farm_name}/flamenco-manager # SELinux security clearance
 fi
 
 cat <<EOF > /etc/systemd/system/flamenco-manager.service
@@ -458,18 +483,18 @@ After=network.target
 
 [Service]
 User=${user_name}
-WorkingDirectory=/home/${user_name}/
+WorkingDirectory=/opt/${farm_name}/
 Type=simple
 Restart=always
 RestartSec=30
-ExecStart=/home/${user_name}/flamenco-manager
+ExecStart=/opt/${farm_name}/flamenco-manager
 
 [Install]
 WantedBy=multi-user.target
 
 EOF
 
-cat <<EOF > /home/${user_name}/flamenco-manager.yaml
+cat <<EOF > /opt/${farm_name}/flamenco-manager.yaml
 # Configuration file for Flamenco.
 # For an explanation of the fields, refer to flamenco-manager-example.yaml
 #
@@ -507,7 +532,7 @@ variables:
   blender:
     values:
     - platform: linux
-      value: /home/oomerfarm/blender-${blenderversion}-linux-x64/blender
+      value: /opt/${farm_name}/blender-${blenderversion}-linux-x64/blender
     - platform: windows
       value: blender
     - platform: darwin
@@ -529,10 +554,8 @@ EOF
 
 systemctl enable --now flamenco-manager
 
-
-
-
 echo -e "\n\e[32mO${farm_name} setup completed.\e[0m"
+echo -e "Storage: SMB //${nebula_ip}/${farm_name}  |  NFS ${nebula_ip}:/mnt/${farm_name} (clients on ${nebula_subnet})"
 echo -e "Remaining steps:"
 echo -e "Enter \e[36m\e[5m${public_ip}\e[0m\e[0m when asked for \e[32mhub\e[0m address"
 echo -e "1. \e[32m[DONE]\e[0m Made secret keys on a trusted desktop/laptop"

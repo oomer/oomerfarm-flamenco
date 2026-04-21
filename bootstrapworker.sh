@@ -4,8 +4,8 @@
 # Turns this machine into a Flamenco renderfarm worker 
 
 # Tested on AWS, Azure, Google, Oracle, Vultr, Digital Ocaan, Linode, Heztner, Server-Factory, Crunchbits
-# Cannot work on unprivilegd lxc because CIFS mounts must be made by host kernel user root 0 
-# https://forum.proxmox.com/threads/tutorial-unprivileged-lxcs-mount-cifs-shares.101795/
+# Shared storage: NFS from hub (10.88.0.1:/mnt/oomerfarm by default). Unprivileged LXC may still need
+# host-level mounts; see your hypervisor docs if mount fails inside the container.
 
 #Helper to discover distribution
 source /etc/os-release
@@ -31,6 +31,10 @@ else
     exit
 fi
 
+### Ensure max security
+# disallow ssh password authentication
+sed -i -E 's/#?PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config 
+
 #blender
 blenderversion="5.1.0"
 blenderurl="https://mirrors.ocf.berkeley.edu/blender/release/Blender5.1"
@@ -51,7 +55,7 @@ ffmpegsha256="e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99"
 bella_version="25.3.0"
 bellasha256="6b94968d4ae039c0f1c34980e1285748fb523582fd6e11a327ea24837dc64d1c"
 
-# Linux and smb user
+# Linux user (uid/gid 3000 should match hub export ownership)
 farm_name="oomerfarm"
 user_name="oomerfarm"
 linux_password="oomerfarm" 
@@ -66,12 +70,11 @@ worker_name_default=$(hostname)
 # [ ] never embed passwords inside scripts
 # [ ] input via ( hopefully ) invisible ephemeral /dev/tty
 # [ ] avoid passing password in command line args which are viewable inside /proc
-# [TODO] add a force option to overwrite existing credential, otherwise delete /etc/nebula/smb_credentials to reset
 
 echo -e "\e[32mTurns this machine into a renderfarm worker\e[0m, polls \e[32mhub\e[0m for render jobs"
 echo -e "\e[31mWARNING:\e[0m Security changes will break any existing services"
 echo -e " - becomes VPN node with address in \e[36m10.88.0.0/16\e[0m subnet"
-echo -e " - install flamenco-worker \e[37m/home/${user_name}/\e[0m"
+echo -e " - install flamenco-worker \e[37m/opt/${farm_name}/\e[0m"
 echo -e " - \e[37mfirewall\e[0m blocks ALL non-oomerfarm ports on Alma/Rocky"
 echo -e " - enforce \e[37mSELinux\e[0m for maximal security on Alma/Rocky"
 echo -e "\e[32mContinue on\e[0m \e[37m$(hostname)?\e[0m"
@@ -145,7 +148,7 @@ if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; the
     fi
     dnf install -y mesa-vulkan-drivers mesa-libGL
     dnf install libXfixes libXrender mesa-libGL libXxf86vm libxkbcommon libSM libICE libXi -y
-    dnf install -y cifs-utils
+    dnf install -y nfs-utils
     #dnf install -y fuse
     systemctl enable --now firewalld
 elif [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
@@ -153,7 +156,7 @@ elif [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ];
     echo -e "\e[32mDiscovered $os_name\e[0m. Support of Ubuntu is alpha quality"
     apt -y update
     #apt -y install sysstat # needed for /usr/local/bin/oomerfarm_shutdown.sh
-    apt -y install cifs-utils
+    apt -y install nfs-common
     apt -y install curl
     apt -y install mesa-vulkan-drivers 
     apt -y install libgl1
@@ -182,8 +185,6 @@ elif ! [ $skip == "yes" ]; then
 fi
 
 #systemctl enable --now sysstat
-echo -e "\e[32mStarting cifs module\e[0m"
-modprobe cifs
 
 echo -e "\e[32mDownloading worker.keys.encrypted\e[0m"
 
@@ -244,14 +245,7 @@ else
 
 fi
 rm worker.tar
-
-# smb_credentials
-cat <<EOF > /etc/nebula/smb_credentials
-username=${user_name}
-password=${linux_password}
-domain=WORKGROUP
-EOF
-chmod go-rwx /etc/nebula/smb_credentials
+rm -f /etc/nebula/smb_credentials
 
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
 
@@ -287,6 +281,8 @@ else
     useradd -g 3000 -u 3000 -m ${user_name}
 fi
 echo "${user_name}:${linux_password}" | chpasswd
+mkdir -p /opt/${farm_name}/bin
+chown -R ${user_name}:${user_name} /opt/${farm_name}
 
 # Install Nebula
 echo -e "\e[32mDownloading Nebula VPN\e[0m"
@@ -299,21 +295,16 @@ else
     echo "FAIL: ${nebula_tar} checksum failed, incomplete download or maliciously altered on github"
     exit
 fi
-mv nebula /usr/local/bin/nebula
-chmod +x /usr/local/bin/nebula
-mv nebula-cert /usr/local/bin/
-chmod +x /usr/local/bin/nebula-cert
+mv nebula /opt/${farm_name}/bin/nebula
+chmod +x /opt/${farm_name}/bin/nebula
+mv nebula-cert /opt/${farm_name}/bin/
+chmod +x /opt/${farm_name}/bin/nebula-cert
 
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-	chcon -t bin_t /usr/local/bin/nebula # SELinux security clearance
+	chcon -t bin_t /opt/${farm_name}/bin/nebula # SELinux security clearance
 fi
 
 rm -f ${nebula_tar}
-
-# Install cifs dependencies
-# [TODO] fix kernel mismatch errors with Alma, works fine in Rocky
-#echo -e "/nInstalling cifs (smb) client dependencies"
-#dnf install -y kernel-modules
 
 # Create Nebula systemd unit 
 # at runtime decides which worker key to use based on hostname
@@ -329,7 +320,7 @@ Restart=always
 RestartSec=35
 ExecStartPre=/bin/bash -c 'sed -i "s/cert.*/cert: \/etc\/nebula\/\$HOSTNAME.crt/g" /etc/nebula/config.yml'
 ExecStartPre=/bin/bash -c 'sed -i "s/key.*/key: \/etc\/nebula\/\$HOSTNAME.key/g" /etc/nebula/config.yml'
-ExecStart=/usr/local/bin/nebula -config /etc/nebula/config.yml
+ExecStart=/opt/${farm_name}/bin/nebula -config /etc/nebula/config.yml
 ExecStartPost=/bin/sleep 2
 
 [Install]
@@ -392,10 +383,12 @@ chmod go-rwx /etc/nebula/config.yml
 systemctl enable nebula.service
 systemctl restart nebula.service
 
-# Setup cifs/smb mount point in /etc/fstab ONLY if it isn't there already
-# needs sophisticated grep discovery with echo
-mkdir -p /mnt/oomerfarm
-grep -qxF "//$lighthouse_nebula_ip/oomerfarm /mnt/oomerfarm cifs rw,noauto,x-systemd.automount,x-systemd.device-timeout=45,nobrl,uid=3000,gid=3000,file_mode=0664,credentials=/etc/nebula/smb_credentials 0 0" /etc/fstab || echo "//$lighthouse_nebula_ip/oomerfarm /mnt/oomerfarm cifs rw,noauto,x-systemd.automount,x-systemd.device-timeout=45,nobrl,uid=3000,gid=3000,file_mode=0664,credentials=/etc/nebula/smb_credentials 0 0" >> /etc/fstab
+# NFS mount (hub must export /mnt/${farm_name} to 10.88.0.0/16). Nebula comes up before first mount.
+mkdir -p /mnt/${farm_name}
+nfs_fstab="${lighthouse_nebula_ip}:/mnt/${farm_name} /mnt/${farm_name} nfs nfsvers=4.1,rw,noauto,x-systemd.automount,x-systemd.device-timeout=60,_netdev 0 0"
+# Remove legacy SMB fstab line from older bootstrap versions
+sed -i '\|^//'"${lighthouse_nebula_ip}"'/oomerfarm /mnt/oomerfarm cifs|d' /etc/fstab 2>/dev/null || true
+grep -qxF "${nfs_fstab}" /etc/fstab || echo "${nfs_fstab}" >> /etc/fstab
 
 echo "Sleeping for 10 seconds for mount to finish"
 if ! ( test -f /mnt/${farm_name}/installers/bella_cli-${bella_version}.tar.gz ); then
@@ -413,9 +406,9 @@ MatchFile="$(echo "${bellasha256} bella_cli-${bella_version}-linux.tar.gz" | sha
 if [ "$MatchFile" = "bella_cli-${bella_version}-linux.tar.gz: OK" ] ; then
     tar -xvf bella_cli-${bella_version}-linux.tar.gz
     chmod +x bella_cli/bella_cli
-    mv bella_cli/bella_cli /usr/local/bin
-    mv bella_cli/libdl_usd_ms.so /usr/local/bin
-    mv bella_cli/usd /usr/local/bin
+    mv bella_cli/bella_cli /opt/${farm_name}/bin
+    mv bella_cli/libdl_usd_ms.so /opt/${farm_name}/bin
+    mv bella_cli/usd /opt/${farm_name}/bin
 
     rm bella_cli-${bella_version}-linux.tar.gz
 else
@@ -424,12 +417,12 @@ else
     exit
 fi
 
-# Install blender in home dir of oomerfarm user
-tar -xvf blender-${blenderversion}-linux-x64.tar.xz --directory /home/${user_name}
+# Install blender in /opt/${farm_name}
+tar -xvf blender-${blenderversion}-linux-x64.tar.xz --directory /opt/${farm_name}/bin
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-    chown -R ${user_name}:${user_name} /home/${user_name}/blender-${blenderversion}-linux-x64
+    chown -R ${user_name}:${user_name} /opt/${farm_name}/blender-${blenderversion}-linux-x64
 else
-    chown -R ${user_name}.${user_name} /home/${user_name}/blender-${blenderversion}-linux-x64
+    chown -R ${user_name}.${user_name} /opt/${farm_name}/blender-${blenderversion}-linux-x64
 fi
 
 # Install flamenco-worker, checksum check in case network storage is compromised
@@ -438,10 +431,10 @@ cp /mnt/${farm_name}/installers/flamenco-worker .
 cp -r /mnt/${farm_name}/installers/tools .
 MatchFile="$(echo "${flamencoworkersha256} flamenco-worker" | sha256sum --check)"
 if [ "$MatchFile" = "flamenco-worker: OK" ] ; then
-    mv flamenco-worker /home/${user_name}
-    chmod ugo+x /home/${user_name}/flamenco-worker
+    mv flamenco-worker /opt/${farm_name}
+    chmod ugo+x /opt/${farm_name}/flamenco-worker
     if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-        chcon -t bin_t /home/${user_name}/flamenco-worker # SELinux security clearance
+        chcon -t bin_t /opt/${farm_name}/flamenco-worker # SELinux security clearance
     fi
 
 cat <<EOF > /etc/systemd/system/flamenco-worker.service
@@ -451,11 +444,12 @@ After=network.target
 
 [Service]
 User=${user_name}
-WorkingDirectory=/home/${user_name}/
+Environment=FLAMENCO_MANAGER_URL=http://10.88.0.1:8080
+WorkingDirectory=/opt/${farm_name}/
 Type=simple
 Restart=always
 RestartSec=30
-ExecStart=/home/${user_name}/flamenco-worker -manager http://${lighthouse_nebula_ip}:8080
+ExecStart=/opt/${farm_name}/flamenco-worker -manager http://${lighthouse_nebula_ip}:8080
 
 [Install]
 WantedBy=multi-user.target
@@ -467,13 +461,15 @@ else
     echo "\e[31mFAIL:\e[0m flamenco-worker checksum failed, may be corrupted or malware"
     exit
 fi
+
 MatchFile="$(echo "${ffmpegsha256} tools/ffmpeg-linux-amd64" | sha256sum --check)"
 if [ "$MatchFile" = "tools/ffmpeg-linux-amd64: OK" ] ; then
-    mv tools /home/${user_name}
-    chmod ugo+x /home/${user_name}/tools/ffmpeg-linux-amd64
+    mv tools/ffmpeg-linux-amd64 /opt/${farm_name}/bin
+    chmod ugo+x /opt/${farm_name}/bin/ffmpeg-linux-amd64
     if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-        chcon -t bin_t /home/${user_name}/tools/ffmpeg-linux-amd64 # SELinux security clearance
+        chcon -t bin_t /opt/${farm_name}/bin/ffmpeg-linux-amd64 # SELinux security clearance
     fi
+    rmdir tools
 else
     rm tools/ffmpeg-linux-amd64
     rmdir tools
