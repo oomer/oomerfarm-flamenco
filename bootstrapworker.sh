@@ -12,8 +12,20 @@ source /etc/os-release
 os_name=$(awk -F= '$1=="NAME" { print $2 ;}' /etc/os-release)
 
 worker_prefix=worker
-lighthouse_internet_port="42042"
 lighthouse_nebula_ip="10.88.0.1"
+
+flamenco_manager_port="8080"
+lighthouse_internet_port="42042"
+ssh_internet_port="42043"
+
+# oomerfarm global vars, down below we use them in the flamenco-worker systemd unit
+# why use lowercase and uppercase? local here and then big for global, ahem.
+oom_store_root="/mnt/oomerfarm/flamenco/jobs"
+oom_render_root="/mnt/oomerfarm/flamenco/renders"
+oom_blob_store="/mnt/oomerfarm/flamenco/file-store/stored"
+oom_out_mount="/mnt/oomerfarm/flamenco"
+oom_tmp_disk="/tmp/oomerfarm"
+ffmpeg_path="/opt/oomerfarm/bin/ffmpeg-linux-amd64"
 
 skip="yes"
 if [[ "$1" == "bypass" ]]; then
@@ -31,7 +43,7 @@ else
     exit
 fi
 
-# True if running inside an LXC guest (host SELinux applies; guest enforcing check is often wrong).
+# True if running inside an LXC guest (skip SELinux due to lack of kernel permissions)
 is_lxc() {
     if command -v systemd-detect-virt >/dev/null 2>&1; then
         case "$(systemd-detect-virt 2>/dev/null || true)" in
@@ -47,8 +59,7 @@ is_lxc() {
     return 1
 }
 
-### Ensure max security
-# disallow ssh password authentication
+### Max security: disallow ssh password authentication
 sed -i -E 's/#?PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config 
 
 #blender
@@ -91,7 +102,7 @@ worker_name_default=$(hostname)
 
 echo -e "\e[32mTurns this machine into a renderfarm worker\e[0m, polls \e[32mhub\e[0m for render jobs"
 echo -e "\e[31mWARNING:\e[0m Security changes will break any existing services"
-echo -e " - becomes VPN node with address in \e[36m10.88.0.0/16\e[0m subnet"
+echo -e " - becomes VPN node with address in \e[36m${lighthouse_nebula_ip}/16\e[0m subnet"
 echo -e " - install flamenco-worker \e[37m/opt/${farm_name}/\e[0m"
 echo -e " - \e[37mfirewall\e[0m blocks ALL non-oomerfarm ports on Alma/Rocky"
 echo -e " - enforce \e[37mSELinux\e[0m for maximal security on Alma/Rocky"
@@ -162,7 +173,7 @@ if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; the
     firewalld_status=$(systemctl status firewalld)
     echo -e "\e[32mDiscovered $os_name\e[0m"
     dnf -y update
-    dnf -y install tar openssl xz
+    dnf -y install tar openssl xz rsync
     #dnf -y install sysstat # needed for /usr/local/bin/oomerfarm_shutdown.sh
     if [ -z "$firewalld_status" ]; then
         dnf -y install firewalld
@@ -180,8 +191,10 @@ if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; the
         cp /tmp/rclone-*-linux-amd64/rclone /usr/local/bin/rclone
         chmod 755 /usr/local/bin/rclone
         rm -rf /tmp/rclone.zip /tmp/rclone-*-linux-amd64
-        if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-            chcon -t bin_t /usr/local/bin/rclone 2>/dev/null || true
+        if ! is_lxc; then
+            if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+                chcon -t bin_t /usr/local/bin/rclone 2>/dev/null || true
+            fi
         fi
     fi
     systemctl enable --now firewalld
@@ -339,8 +352,10 @@ chmod +x /opt/${farm_name}/bin/nebula
 mv nebula-cert /opt/${farm_name}/bin/
 chmod +x /opt/${farm_name}/bin/nebula-cert
 
-if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-	chcon -t bin_t /opt/${farm_name}/bin/nebula # SELinux security clearance
+if ! is_lxc; then
+    if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+	    chcon -t bin_t /opt/${farm_name}/bin/nebula # SELinux security clearance
+    fi
 fi
 
 rm -f ${nebula_tar}
@@ -422,13 +437,13 @@ chmod go-rwx /etc/nebula/config.yml
 systemctl enable nebula.service
 systemctl restart nebula.service
 
-# Strip kernel NFS / CIFS fstab lines (we use rclone FUSE only)
+# Use rclone FUSE only, NFS/SMB can be substitutedm, see older commits
 sed -i '\| /mnt/'"${farm_name}"' nfs |d' /etc/fstab 2>/dev/null || true
 sed -i '\|^//'"${lighthouse_nebula_ip}"'/'"${farm_name}"' /mnt/'"${farm_name}"' cifs|d' /etc/fstab 2>/dev/null || true
 
 mkdir -p /mnt/${farm_name}
 
-# rclone SMB config (same hub/share as kernel CIFS used: //10.88.0.1/oomerfarm)
+# rclone SMB config (same hub/share as kernel CIFS used: //${lighthouse_nebula_ip}/oomerfarm)
 mkdir -p /etc/rclone
 chmod 700 /etc/rclone
 export RCLONE_CONFIG=/etc/rclone/rclone.conf
@@ -444,7 +459,7 @@ if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; the
     setsebool -P virt_use_fuse 1 2>/dev/null || true
 fi
 
-cat <<EOF > /etc/systemd/system/rclone-farm.service
+cat <<EOF > /etc/systemd/system/oomerfarm-rclone.service
 [Unit]
 Description=rclone FUSE mount hub SMB at /mnt/${farm_name}
 After=network-online.target nebula.service
@@ -462,8 +477,8 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable rclone-farm.service
-systemctl restart rclone-farm.service
+systemctl enable oomerfarm-rclone.service
+systemctl restart oomerfarm-rclone.service
 
 # Must match the tarball name under installers/ on the hub (same as cp below).
 bella_installer="bella_cli-${bella_version}-linux.tar.gz"
@@ -475,7 +490,7 @@ for _i in $(seq 1 30); do
     sleep 2
 done
 if ! test -f "/mnt/${farm_name}/installers/${bella_installer}"; then
-    echo -e "\e[31mFAIL:\e[0m rclone mount did not expose hub installers path (expected installers/${bella_installer})."
+    echo -e "\e[31mFAIL:\e[0m rclone mount did not expose manager installers path (expected installers/${bella_installer})."
     echo "Check: systemctl status rclone-farm; journalctl -u rclone-farm -b; rclone ls ${rclone_remote}:${farm_name}/installers --config /etc/rclone/rclone.conf"
     exit 1
 fi
@@ -487,10 +502,11 @@ MatchFile="$(echo "${bellasha256} ${bella_installer}" | sha256sum --check)"
 if [ "$MatchFile" = "${bella_installer}: OK" ] ; then
     tar -xvf "${bella_installer}"
     chmod +x bella_cli/bella_cli
-    mv bella_cli/bella_cli /opt/${farm_name}/bin
-    mv bella_cli/libdl_usd_ms.so /opt/${farm_name}/bin
-    mv bella_cli/usd /opt/${farm_name}/bin
-
+    mv bella_cli bella-${bella_version}-cli
+    cp -r bella-${bella_version}-cli /opt/${farm_name}/bin
+    #mv bella_cli/bella_cli /opt/${farm_name}/bin
+    #mv bella_cli/libdl_usd_ms.so /opt/${farm_name}/bin
+    #mv bella_cli/usd /opt/${farm_name}/bin
     rm -f "${bella_installer}"
 else
     rm -f "${bella_installer}"
@@ -514,8 +530,10 @@ MatchFile="$(echo "${flamencoworkersha256} flamenco-worker" | sha256sum --check)
 if [ "$MatchFile" = "flamenco-worker: OK" ] ; then
     mv flamenco-worker /opt/${farm_name}
     chmod ugo+x /opt/${farm_name}/flamenco-worker
-    if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-        chcon -t bin_t /opt/${farm_name}/flamenco-worker # SELinux security clearance
+    if ! is_lxc; then
+        if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+            chcon -t bin_t /opt/${farm_name}/flamenco-worker # SELinux security clearance
+        fi
     fi
 
 cat <<EOF > /etc/systemd/system/flamenco-worker.service
@@ -526,12 +544,18 @@ Wants=rclone-farm.service
 
 [Service]
 User=${user_name}
-Environment=FLAMENCO_MANAGER_URL=http://10.88.0.1:8080
+Environment=OOM_VPN_URL=http://${lighthouse_nebula_ip}:${flamenco_manager_port}
+Environment=OOM_BELLA_VERSION=${bella_version}
+Environment=OOM_STORE_ROOT=${oom_store_root}
+Environment=OOM_RENDER_ROOT=${oom_render_root}
+Environment=OOM_BLOB_STORE=${oom_blob_store}
+Environment=OOM_TMP_DISK=${oom_tmp_disk}
+Environment=FFMPEG_PATH=${ffmpeg_path}
 WorkingDirectory=/opt/${farm_name}/
 Type=simple
 Restart=always
 RestartSec=30
-ExecStart=/opt/${farm_name}/flamenco-worker -manager http://${lighthouse_nebula_ip}:8080
+ExecStart=/opt/${farm_name}/flamenco-worker -manager http://${lighthouse_nebula_ip}:${flamenco_manager_port}
 
 [Install]
 WantedBy=multi-user.target
@@ -548,8 +572,10 @@ MatchFile="$(echo "${ffmpegsha256} tools/ffmpeg-linux-amd64" | sha256sum --check
 if [ "$MatchFile" = "tools/ffmpeg-linux-amd64: OK" ] ; then
     mv tools/ffmpeg-linux-amd64 /opt/${farm_name}/bin
     chmod ugo+x /opt/${farm_name}/bin/ffmpeg-linux-amd64
-    if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-        chcon -t bin_t /opt/${farm_name}/bin/ffmpeg-linux-amd64 # SELinux security clearance
+    if ! is_lxc; then
+        if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
+            chcon -t bin_t /opt/${farm_name}/bin/ffmpeg-linux-amd64 # SELinux security clearance
+        fi
     fi
     rmdir tools
 else

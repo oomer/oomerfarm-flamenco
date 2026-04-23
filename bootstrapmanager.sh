@@ -399,10 +399,12 @@ chmod go-rw /mnt/${farm_name}/renders
 mkdir -p /mnt/${farm_name}/installers
 chmod go-rw /mnt/${farm_name}/installers
 
+# Recursive: subdirs were created as root; non-recursive chown left installers/ renders/ root-owned.
+# chmod go-rw on those dirs then denied oomerfarm (as "other") directory read → SMB/rclone "permission denied".
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-    chown ${user_name}:${user_name} /mnt/${farm_name}
+    chown -R ${user_name}:${user_name} /mnt/${farm_name}
 elif [ "$os_name" == "\"Ubuntu\"" ] || [ "$os_name" == "\"Debian GNU/Linux\"" ]; then
-    chown ${user_name}.${user_name} /mnt/${farm_name}
+    chown -R ${user_name}.${user_name} /mnt/${farm_name}
 fi 
 
 # SELinux beat me again because missed chcon and could mount but not see samba shares contents
@@ -464,6 +466,7 @@ cp flamenco-${flamenco_version}-linux-amd64/flamenco-manager /opt/${farm_name}/f
 cp flamenco-${flamenco_version}-linux-amd64/flamenco-worker /mnt/${farm_name}/installers
 cp -r flamenco-${flamenco_version}-linux-amd64/tools /mnt/${farm_name}/installers/tools
 cp -r scripts /opt/${farm_name}/
+cp -r lib /opt/${farm_name}/
 
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
     chown ${user_name}:${user_name}  /opt/${farm_name}/flamenco-manager
