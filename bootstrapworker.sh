@@ -584,3 +584,4 @@ else
     echo "\e[31mFAIL:\e[0m ffmpeg checksum failed, may be corrupted or malware"
     exit
 fi
+cp -r lib /opt/${farm_name}/
