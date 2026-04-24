@@ -535,7 +535,7 @@ variables:
   blender:
     values:
     - platform: linux
-      value: /opt/${farm_name}/blender-${blenderversion}-linux-x64/blender
+      value: /opt/${farm_name}/bin/blender-${blenderversion}-linux-x64/blender
     - platform: windows
       value: blender
     - platform: darwin

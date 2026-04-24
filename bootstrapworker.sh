@@ -179,7 +179,7 @@ if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; the
         dnf -y install firewalld
     fi
     dnf install -y mesa-vulkan-drivers mesa-libGL
-    dnf install libXfixes libXrender mesa-libGL libXxf86vm libxkbcommon libSM libICE libXi -y
+    dnf install libXfixes libXrender mesa-libGL libXxf86vm libxkbcommon libSM libICE libXi mesa-libEGL -y
     dnf install -y fuse3
     dnf install -y epel-release 2>/dev/null || true
     dnf install -y rclone 2>/dev/null || true

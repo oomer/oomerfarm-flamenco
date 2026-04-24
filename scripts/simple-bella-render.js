@@ -113,7 +113,7 @@
 //   local outputs     —                   —                 LOCAL_RENDER         —
 // LOCAL_CHECKOUT = $OOM_TMP_DISK/checkouts/$CHECKOUT_PATH   (hard links to blob cache)
 // LOCAL_RENDER   = $OOM_TMP_DISK/renders/$CHECKOUT_PATH     (real files bella writes)
-/
+
 function shQuote(s) {
     return "'" + String(s).replace(/'/g, "'\\''") + "'";
 }
