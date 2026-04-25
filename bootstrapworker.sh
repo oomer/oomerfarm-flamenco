@@ -517,9 +517,9 @@ fi
 # Install blender in /opt/${farm_name}
 tar -xvf blender-${blenderversion}-linux-x64.tar.xz --directory /opt/${farm_name}/bin
 if [ "$os_name" == "\"AlmaLinux\"" ] || [ "$os_name" == "\"Rocky Linux\"" ]; then
-    chown -R ${user_name}:${user_name} /opt/${farm_name}/blender-${blenderversion}-linux-x64
+    chown -R ${user_name}:${user_name} /opt/${farm_name}/bin/blender-${blenderversion}-linux-x64
 else
-    chown -R ${user_name}.${user_name} /opt/${farm_name}/blender-${blenderversion}-linux-x64
+    chown -R ${user_name}.${user_name} /opt/${farm_name}/bin/blender-${blenderversion}-linux-x64
 fi
 
 # Install flamenco-worker, checksum check in case network storage is compromised
