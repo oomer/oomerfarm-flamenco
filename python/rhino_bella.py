@@ -503,6 +503,7 @@ def _decide_gui(args: argparse.Namespace) -> bool:
             args.bella_version,
             args.priority,
             getattr(args, "manager_url", None),
+            getattr(args, "frames", None),
         )
     )
     return _eto_available() and not any_job_arg
@@ -511,7 +512,7 @@ def _decide_gui(args: argparse.Namespace) -> bool:
 def main(argv: Optional[List[str]] = None) -> int:
     p = create_arg_parser(
         prog="rhinoBella",
-        description="Submit a Rhino Bella .bsz to Flamenco as a simple-bella-render job.",
+        description="Submit a Rhino Bella .bsz to Flamenco (single frame or multi-.bsz sequence).",
         include_gui=True,
     )
     args = p.parse_args(argv)
@@ -550,6 +551,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             priority=int(gui_result["priority"]),
             comment=gui_result["comment"],
             manager_url=gui_result.get("manager_url", s0.manager_url),
+            frames_spec=s0.frames_spec,
         )
     else:
         state = s0

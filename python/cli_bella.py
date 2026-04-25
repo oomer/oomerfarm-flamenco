@@ -42,7 +42,7 @@ from bella_submitter import APP_CLI, create_arg_parser, resolve_submit_inputs, r
 def main(argv: Optional[List[str]] = None) -> int:
     p = create_arg_parser(
         prog="cliBella",
-        description="Submit a Bella .bsz to Flamenco as a simple-bella-render job (plain python3).",
+        description="Submit a Bella .bsz to Flamenco (single frame or multi-.bsz sequence).",
         include_gui=False,
     )
     args = p.parse_args(argv)

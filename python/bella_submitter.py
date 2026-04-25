@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 """
-Shared Flamenco / Shaman submit path for Bella .bsz → simple-bella-render jobs.
+Shared Flamenco / Shaman submit path for Bella .bsz → simple-bella-render
+(one frame) or bella-frames-render (sibling .bsz sequence, one task per frame).
 
 HTTP/HTTPS (including mTLS) uses only the standard library: urllib and ssl.
 No third-party packages are required.
@@ -15,19 +16,23 @@ Submission flow (orchestrated by _run_full_submission_impl)
                                (handles "auto" probe chain).
 2. make_session                urllib session; ensure_public_ca_anchors (below)
                                + mTLS client cert for https://.
-3. zipfile.ZipFile(...).extract   unpack .bsz into a temp directory,
-                               normalising Windows-style path separators in zip
-                               entry names.
-4. collect_file_specs          walk the temp dir -> [(path, sha256, size)].
-5. _pick_bella_scene           choose the .bsx scene to render
-                               ($FLAMENCO_BELLA_SCENE can override).
-6. upload_shaman_files         POST /shaman/checkout/requirements, then
+3. zipfile… extract          unpack to temp (one tree, or under `seq/…/` per .bsz).
+4. **Single** .bsz → one scene, ``simple-bella-render``. **Sequence** (sibling
+   ``.bsz``): discover + optional frame subset; extract **all** into **one** temp
+   tree (shared ``res/``; each .bsx is root-level ``<stem>.bsx`` matching the .bsz
+   name). All beauty
+   frames land under ``…/renders/<checkout_path>/`` (flat names, like single-frame
+   bella; good for ``ffmpeg``); post
+   ``bella-frames-render`` (one task per frame).
+5. collect_file_specs          walk the temp dir -> [(path, sha256, size)].
+6. _pick_bella_scene           choose the .bsx scene to render
+                               ($FLAMENCO_BELLA_SCENE can override; single .bsz).
+7. upload_shaman_files         POST /shaman/checkout/requirements, then
                                POST /shaman/files/<sha>/<size> for each file
                                the manager still needs.
-7. create_shaman_checkout      POST /shaman/checkout/create to link the uploaded
+8. create_shaman_checkout      POST /shaman/checkout/create to link the uploaded
                                files into a worker-visible path.
-8. submit_render_job           POST /api/v3/jobs with metadata, priority,
-                               bella_version, checkout_path, bella_scene.
+9. submit_render_job / submit_bella_frames_job   POST /api/v3/jobs
 
 Entry points: run_full_submission (prints progress, returns 0/1);
 create_arg_parser and resolve_submit_inputs (shared CLI/env parsing).
@@ -63,6 +68,7 @@ _DEFAULT_PUBLIC_FALLBACK = "https://flamencosubmit.birdspit.com"
 # ``SubmitState.manager_url`` when user picks auto-probe (not a real URL string).
 MANAGER_URL_AUTO = "__flamenco_manager_auto__"
 JOB_TYPE_NAME = "simple-bella-render"
+JOB_TYPE_NAME_FRAMES = "bella-frames-render"
 
 # Must match the `choices` list in simple-bella-render.js → JOB_TYPE.settings[bella_version].
 BELLA_VERSIONS = ("25.3.0", "24.6.0")
@@ -128,6 +134,8 @@ class SubmitState(NamedTuple):
     comment: str
     # Non-empty: use as manager base. Empty: use FLAMENCO_MANAGER_URL / FLAMENCO_URL / default.
     manager_url: str
+    # Multi-.bsz only: 1-based frame spec (e.g. "1,3,5-7") or "" for all. See parse_frame_index_spec.
+    frames_spec: str
 
 
 def _user_agent() -> str:
@@ -822,6 +830,155 @@ def _pick_bella_scene(
     return chosen
 
 
+def _bella_scene_path_for_merged_bsz(
+    rows: List[Dict[str, Any]], bsz_path: str
+) -> str:
+    """Resolve the scene for *bsz_path* in the merged Shaman tree.
+
+    **Contract:** for ``oom_bake_0.bsz`` there must be a root-level ``oom_bake_0.bsx`` in the
+    upload (one path segment: ``<stem>.bsx`` at the checkout root). The ``.bsz`` and ``.bsx``
+    stems must match (compared with ``casefold`` on the base name). If the file exists only
+    under a subdir, or is missing, we raise a clear failure (assert-style).
+    """
+    bsz_stem = os.path.splitext(os.path.basename(bsz_path))[0]
+    cfold = bsz_stem.casefold()
+    at_root: List[str] = []
+    nested_match: List[str] = []
+    for r in rows:
+        p = r["path"]
+        if not p.lower().endswith(".bsx"):
+            continue
+        base = os.path.splitext(os.path.basename(p))[0]
+        if base.casefold() != cfold:
+            continue
+        if "/" in p:
+            nested_match.append(p)
+        else:
+            at_root.append(p)
+    if len(at_root) == 1:
+        return at_root[0]
+    if len(at_root) > 1:
+        raise RuntimeError(
+            f"Assert failed: multiple root .bsx for stem {bsz_stem!r}: {at_root!r} "
+            f"({os.path.basename(bsz_path)!r})"
+        )
+    if nested_match:
+        raise RuntimeError(
+            f"Assert failed: {bsz_stem}.bsx must be at the **root** of the archive (and merged "
+            f"tree), not only under a directory. Off-root matches: {nested_match!r} "
+            f"({os.path.basename(bsz_path)!r})"
+        )
+    have_root = [r["path"] for r in rows if "/" not in r["path"]]
+    raise RuntimeError(
+        f"Assert failed: root-level {bsz_stem}.bsx missing for {os.path.basename(bsz_path)!r}. "
+        f"Top-level paths in manifest: {have_root[:40]!r}{'…' if len(have_root) > 40 else ''}"
+    )
+
+
+def discover_bsz_sequence(anchor: str) -> List[str]:
+    """Return ordered list of .bsz paths in the same directory that share this sequence.
+
+    A "sequence" is: same non-empty *prefix* of the file stem, with a decimal suffix
+    (e.g. ``shot_0007.bsz`` → prefix ``shot_``). All ``<prefix><digits>.bsz`` in that
+    directory are included, ordered by the numeric value of the suffix.
+
+    If the anchor stem has no trailing digits, or no siblings match, returns
+    ``[abs(anchor)]`` only.
+    """
+    ap = os.path.abspath(os.path.expanduser(anchor))
+    d = os.path.dirname(ap)
+    if not d or not os.path.isdir(d):
+        return [ap]
+    base = os.path.basename(ap)
+    stem = os.path.splitext(base)[0]
+    m = re.search(r"(\d+)$", stem)
+    if not m:
+        return [ap]
+    num_ext = m.group(1)
+    prefix = stem[: -len(num_ext)]
+    if not prefix:
+        return [ap]
+    pat = re.compile(
+        "^" + re.escape(prefix) + r"(\d+)" + re.escape(".bsz") + r"$", re.IGNORECASE
+    )
+    found: List[Tuple[str, int]] = []
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return [ap]
+    for name in names:
+        mm = pat.match(name)
+        if not mm:
+            continue
+        full = os.path.join(d, name)
+        if os.path.isfile(full):
+            found.append((full, int(mm.group(1))))
+    if len(found) <= 1:
+        return [ap]
+    found.sort(key=lambda t: t[1])
+    return [f for f, _ in found]
+
+
+def parse_frame_index_spec(spec: str) -> List[int]:
+    """Parse a 1-based frame index list for ``select_sequence_for_render`` (e.g. ``1,3,5-7``)."""
+    acc = set()
+    s = (spec or "").strip()
+    if not s:
+        return []
+    for part in s.split(","):
+        p = part.strip()
+        if not p:
+            continue
+        if "-" in p:
+            a, b = p.split("-", 1)
+            lo, hi = int(a.strip()), int(b.strip())
+            for i in range(min(lo, hi), max(lo, hi) + 1):
+                acc.add(i)
+        else:
+            acc.add(int(p))
+    return sorted(acc)
+
+
+def select_sequence_for_render(
+    discovered: List[str], spec: str
+) -> List[str]:
+    """Filter ``discovered`` (ordered .bsz paths) by 1-based indices in *spec*.
+
+    *spec* empty → return a copy of *discovered*. Raises ``ValueError`` if nothing
+    is selected in range.
+    """
+    if not discovered:
+        return []
+    s = (spec or "").strip()
+    if not s:
+        return list(discovered)
+    n = len(discovered)
+    wanted = parse_frame_index_spec(s)
+    out = [discovered[i - 1] for i in wanted if 1 <= i <= n]
+    if not out:
+        raise ValueError(
+            f"Frame spec {s!r} did not select any of 1–{n} in this sequence."
+        )
+    return out
+
+
+def _unique_stem_slugs_for_bsz_list(paths: List[str]) -> List[str]:
+    """One slug per .bsz for worker *output_tag* / *publish_stem*; disambiguate if stems collide after slugify."""
+    seen: set = set()
+    out: List[str] = []
+    for p in paths:
+        stem = os.path.splitext(os.path.basename(p))[0]
+        base = _slugify(stem)
+        slug = base
+        n = 0
+        while slug in seen:
+            n += 1
+            slug = f"{base}_{n}"
+        seen.add(slug)
+        out.append(slug)
+    return out
+
+
 def collect_file_specs(root: str) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     for full in sorted(_iter_files(root)):
@@ -937,7 +1094,7 @@ def create_shaman_checkout(
 
 
 def _resolve_job_type(
-    session: ManagerSession, base: str
+    session: ManagerSession, base: str, job_type_name: str
 ) -> Tuple[str, Optional[str]]:
     try:
         r = session.get(
@@ -946,14 +1103,14 @@ def _resolve_job_type(
             timeout=HTTP_TIMEOUT_API_S,
         )
         if r.status_code != 200:
-            return (JOB_TYPE_NAME, None)
+            return (job_type_name, None)
         data = json.loads(r.text) if (r.text or "").strip() else {}
         for jt in data.get("job_types", []):
-            if jt.get("label") == JOB_TYPE_NAME or jt.get("name") == JOB_TYPE_NAME:
-                return (jt.get("name") or JOB_TYPE_NAME, jt.get("etag"))
+            if jt.get("label") == job_type_name or jt.get("name") == job_type_name:
+                return (jt.get("name") or job_type_name, jt.get("etag"))
     except (RuntimeError, ValueError, TypeError, json.JSONDecodeError):
         pass
-    return (JOB_TYPE_NAME, None)
+    return (job_type_name, None)
 
 
 def submit_render_job(
@@ -969,7 +1126,7 @@ def submit_render_job(
     bella_version: Optional[str] = None,
 ) -> None:
     base = base_url.rstrip("/")
-    job_type, etag = _resolve_job_type(session, base)
+    job_type, etag = _resolve_job_type(session, base, JOB_TYPE_NAME)
 
     if bella_version is None:
         bella_version = (
@@ -984,7 +1141,8 @@ def submit_render_job(
         raise ValueError(
             f"bella_version {bella_version!r} is not one of "
             f"{list(BELLA_VERSIONS)} — add it to bella_submitter.BELLA_VERSIONS and to "
-            f"simple-bella-render.js JOB_TYPE.settings.bella_version.choices to enable."
+            f"simple-bella-render.js and bella-frames-render.js "
+            f"JOB_TYPE.settings.bella_version.choices to enable."
         )
     priority = max(PRIORITY_MIN, min(PRIORITY_MAX, int(priority)))
 
@@ -1023,6 +1181,91 @@ def submit_render_job(
         out = _check_json_response(r, "POST /api/v3/jobs")
         jid = out.get("id", "?")
         print(f"Submitted Flamenco Bella job id={jid}")
+    except RuntimeError as e:
+        raise RuntimeError(f"Job submit failed: {e}") from e
+
+
+def submit_bella_frames_job(
+    session: ManagerSession,
+    app: AppProfile,
+    checkout_path: str,
+    base_url: str,
+    *,
+    frames: List[Dict[str, str]],
+    metadata: Optional[Dict[str, str]] = None,
+    job_name: Optional[str] = None,
+    priority: int = DEFAULT_PRIORITY,
+    bella_version: Optional[str] = None,
+) -> None:
+    """POST ``bella-frames-render`` with settings ``bella_frames_json`` (JSON of frame rows)."""
+    base = base_url.rstrip("/")
+    job_type, etag = _resolve_job_type(session, base, JOB_TYPE_NAME_FRAMES)
+
+    if bella_version is None:
+        bella_version = (
+            os.environ.get("FLAMENCO_BELLA_VERSION", "").strip()
+            or DEFAULT_BELLA_VERSION
+        )
+
+    _validate_rel_path(checkout_path, "checkout_path")
+    normalized_frames: List[Dict[str, str]] = []
+    for row in frames:
+        _validate_rel_path(row["bella_scene"], "bella_scene")
+        _validate_rel_path(row["output_tag"], "output_tag")
+        ps = (row.get("publish_stem") or row.get("output_tag") or "").strip()
+        if not ps:
+            raise ValueError("each frame row needs publish_stem (or output_tag)")
+        _validate_rel_path(ps, "publish_stem")
+        rd = {k: str(v) for k, v in row.items() if v not in (None, "")}
+        rd["publish_stem"] = ps
+        normalized_frames.append(rd)
+    if bella_version not in BELLA_VERSIONS:
+        raise ValueError(
+            f"bella_version {bella_version!r} is not one of {list(BELLA_VERSIONS)} — add it to "
+            "bella_submitter.BELLA_VERSIONS and bella-frames-render.js (and simple-bella-render.js) "
+            "bella_version.choices to enable."
+        )
+    priority = max(PRIORITY_MIN, min(PRIORITY_MAX, int(priority)))
+
+    settings: Dict[str, Any] = {
+        "checkout_path": checkout_path,
+        "bella_version": bella_version,
+        "bella_frames_json": json.dumps(normalized_frames),
+    }
+
+    payload: Dict[str, Any] = {
+        "name": job_name
+        or f"{app.default_job_name_prefix} {len(normalized_frames)} frames {checkout_path}",
+        "type": job_type,
+        "priority": priority,
+        "submitter_platform": _submitter_platform(),
+        "settings": settings,
+    }
+    if metadata:
+        payload["metadata"] = {k: str(v) for k, v in metadata.items() if v not in (None, "")}
+    if etag:
+        payload["type_etag"] = etag
+
+    headers = _manager_headers(content_type="application/json")
+    wid = os.environ.get("FLAMENCO_WORKER_ID", "")
+    wsec = os.environ.get("FLAMENCO_WORKER_SECRET", "")
+    if wid and wsec:
+        headers["X-Flamenco-Worker-ID"] = wid
+        headers["X-Flamenco-Worker-Secret"] = wsec
+
+    try:
+        r = session.post(
+            f"{base}/api/v3/jobs",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            timeout=HTTP_TIMEOUT_API_S,
+        )
+        out = _check_json_response(r, "POST /api/v3/jobs")
+        jid = out.get("id", "?")
+        print(
+            f"Submitted Flamenco Bella sequence job id={jid} "
+            f"({len(normalized_frames)} task(s))"
+        )
     except RuntimeError as e:
         raise RuntimeError(f"Job submit failed: {e}") from e
 
@@ -1099,6 +1342,16 @@ def create_arg_parser(
         metavar=f"[{PRIORITY_MIN}-{PRIORITY_MAX}]",
         help=f"Job priority, clamped to [{PRIORITY_MIN}, {PRIORITY_MAX}]. Default {DEFAULT_PRIORITY}.",
     )
+    parser.add_argument(
+        "--frames",
+        default=None,
+        metavar="SPEC",
+        help=(
+            "Multi-.bsz sequence only: 1-based frame indices, e.g. 1,3,5-7. "
+            "Omit to render the full discovered sequence. "
+            "Falls back to $FLAMENCO_FRAMES when not set on the CLI."
+        ),
+    )
     if include_gui:
         parser.add_argument(
             "--gui",
@@ -1146,6 +1399,10 @@ def resolve_submit_inputs(args: argparse.Namespace) -> SubmitState:
         url_override = MANAGER_URL_AUTO
     else:
         url_override = url_raw
+    frames_from_cli = getattr(args, "frames", None)
+    frames_default = (frames_from_cli or "").strip() or os.environ.get(
+        "FLAMENCO_FRAMES", ""
+    ).strip()
     return SubmitState(
         project_default_raw,
         bsz_default,
@@ -1153,6 +1410,7 @@ def resolve_submit_inputs(args: argparse.Namespace) -> SubmitState:
         int(priority_default),
         comment_default,
         url_override,
+        frames_default,
     )
 
 
@@ -1165,42 +1423,37 @@ def run_full_submission(app: AppProfile, state: SubmitState) -> int:
         _current_app.reset(token)
 
 
-def _run_full_submission_impl(app: AppProfile, state: SubmitState) -> int:
-    print(f"{app.display_name} — {app.banner_subtitle}\n")
+def _print_submission_header_common(
+    app: AppProfile, state: SubmitState, base: str, checkout_path: str
+) -> None:
+    identity = _submitter_identity()
+    print(f"Checkout path: {checkout_path}")
+    print(f"Submitter:     {identity['user']}@{identity['host']} ({identity['os_family']})")
+    print(f"Bella version: {state.bella_version}")
+    print(f"Priority:      {state.priority}")
+    if state.comment:
+        print(f"Comment:       {state.comment}")
+    if (state.frames_spec or "").strip():
+        print(f"Frame spec:    {state.frames_spec}")
 
-    base = _effective_manager_url(state)
-    print(f"Manager: {base}")
 
-    try:
-        session = make_session(base)
-    except (FileNotFoundError, ValueError) as e:
-        print(str(e), file=sys.stderr)
-        return 1
-    print()
+def _print_submission_error(msg: str) -> None:
+    print(f"\nERROR: submission stopped — {msg}")
+    print(
+        "  No Flamenco job was created. Fix the condition above "
+        "(e.g. VPN, --url, mTLS cert/CA) and re-run."
+    )
+    print(f"ERROR: submission stopped — {msg}", file=sys.stderr)
 
-    if os.environ.get("FLAMENCO_PRINT_CONFIGURATION", "").strip() == "1":
-        try:
-            r = session.get(
-                f"{base}/api/v3/configuration",
-                headers=_manager_headers(),
-                timeout=HTTP_TIMEOUT_API_S,
-            )
-            print("GET /api/v3/configuration →", r.status_code)
-            if r.text:
-                print(r.text[:2000])
-        except RuntimeError as e:
-            print(f"(configuration probe failed: {e})")
 
-    bsz = state.bsz_path
-    if not bsz or not os.path.isfile(bsz):
-        print(
-            f"Missing BSZ file: {bsz or '(none)'}\n"
-            "Pass --bsz, set BELLA_BSZ (or RHINO_BELLA_BSZ / SIMPLE_BELLA_BSZ), "
-            f"or place simple.bsz beside bella_submitter.py ({_here()}).",
-            file=sys.stderr,
-        )
-        return 1
-
+def _submit_single_bella_zip(
+    app: AppProfile,
+    state: SubmitState,
+    base: str,
+    session: ManagerSession,
+    bsz: str,
+) -> int:
+    """Single .bsz → ``simple-bella-render`` (one Shaman tree, one Flamenco task)."""
     identity = _submitter_identity()
     project = _slugify(state.project_raw)
     scene_base = _slugify(os.path.splitext(os.path.basename(bsz))[0]) or "scene"
@@ -1222,12 +1475,8 @@ def _run_full_submission_impl(app: AppProfile, state: SubmitState) -> int:
 
     job_name = f"{project}/{scene_base} — {app.dcc} · bella {state.bella_version}"
 
-    print(f"Checkout path: {checkout_path}")
-    print(f"Submitter:     {identity['user']}@{identity['host']} ({identity['os_family']})")
-    print(f"Bella version: {state.bella_version}")
-    print(f"Priority:      {state.priority}")
-    if state.comment:
-        print(f"Comment:       {state.comment}")
+    print(f"Job type:      simple-bella-render (1 frame)\n")
+    _print_submission_header_common(app, state, base, checkout_path)
     print()
 
     out_dir = tempfile.mkdtemp(prefix="bella_bsz_")
@@ -1286,17 +1535,192 @@ def _run_full_submission_impl(app: AppProfile, state: SubmitState) -> int:
                 bella_version=state.bella_version,
             )
         except RuntimeError as e:
-            # Rhino's ScriptEditor often surfaces only stdout (this tab), not stderr,
-            # so write the failure banner to BOTH streams. Users must see why a
-            # submit stopped mid-way (mTLS, DNS, timeout, …).
-            msg = str(e)
-            print(f"\nERROR: submission stopped — {msg}")
-            print(
-                "  No Flamenco job was created. Fix the condition above "
-                "(e.g. VPN, --url, mTLS cert/CA) and re-run."
-            )
-            print(f"ERROR: submission stopped — {msg}", file=sys.stderr)
+            _print_submission_error(str(e))
             return 1
     finally:
         shutil.rmtree(out_dir, ignore_errors=True)
     return 0
+
+
+def _submit_bella_sequence(
+    app: AppProfile,
+    state: SubmitState,
+    base: str,
+    session: ManagerSession,
+    selected: List[str],
+    *,
+    discovered: List[str],
+) -> int:
+    """Several .bsz: extract **all** into one tree (shared ``res/``), one task per .bsx → ``bella-frames-render``."""
+    identity = _submitter_identity()
+    project = _slugify(state.project_raw)
+    a0 = os.path.splitext(os.path.basename(selected[0]))[0]
+    a1 = os.path.splitext(os.path.basename(selected[-1]))[0]
+    scene_base = _slugify(f"{a0}_to_{a1}_n{len(selected)}")
+    if len(scene_base) > 120:
+        scene_base = _slugify(f"seq{len(selected)}_{a0}")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    checkout_path = f"{project}/{scene_base}/{stamp}"
+
+    metadata: Dict[str, str] = {
+        "submitter_user": identity["user"],
+        "submitter_host": identity["host"],
+        "submitter_os": identity["os"],
+        "submitter_dcc": app.dcc,
+        "submitter_version": app.user_agent,
+        "project": project,
+        "scene_base": scene_base,
+        "bella_frame_count": str(len(selected)),
+        "bella_sequence": "1",
+        "bella_renders_layout": "flat_under_checkout",
+        "bsz_first": os.path.basename(selected[0]),
+        "bsz_last": os.path.basename(selected[-1]),
+    }
+    if state.comment:
+        metadata["comment"] = state.comment
+
+    job_name = (
+        f"{project}/{scene_base} — {app.dcc} · bella {state.bella_version} "
+        f"· {len(selected)} frames"
+    )
+
+    n_disc = len(discovered)
+    if n_disc > len(selected) or (state.frames_spec or "").strip():
+        print(
+            f"Sequence:     {n_disc} matching .bsz in directory, "
+            f"submitting {len(selected)} (see frame spec if subset)\n"
+        )
+    else:
+        print(f"Sequence:     {len(selected)} .bsz file(s) in this job\n")
+
+    print(
+        f"Job type:      bella-frames-render ({len(selected)} Flamenco task(s), "
+        f"1 per frame)\n"
+    )
+    _print_submission_header_common(app, state, base, checkout_path)
+    print()
+
+    out_dir = tempfile.mkdtemp(prefix="bella_bszseq_")
+    try:
+        # Unpack every .bsz into the same tree so res/ and shared assets merge; later archives
+        # add or overwrite; each frame's .bsx should be named to match its .bsz (see
+        # _bella_scene_path_for_merged_bsz).
+        for bsz_p in selected:
+            with zipfile.ZipFile(bsz_p, "r") as zf:
+                for info in zf.infolist():
+                    if "\\" in info.filename:
+                        info.filename = info.filename.replace("\\", "/")
+                    zf.extract(info, out_dir)
+
+        rows = collect_file_specs(out_dir)
+        if not rows:
+            print("Sequence extract produced no files.", file=sys.stderr)
+            return 1
+
+        stem_slugs = _unique_stem_slugs_for_bsz_list(selected)
+        frame_rows: List[Dict[str, str]] = []
+        for bsz_p, slug in zip(selected, stem_slugs):
+            try:
+                bella_scene = _bella_scene_path_for_merged_bsz(rows, bsz_p)
+            except RuntimeError as e:
+                print(str(e), file=sys.stderr)
+                return 1
+            try:
+                _validate_rel_path(bella_scene, "bella_scene")
+            except ValueError as e:
+                print(
+                    f"{e}\n"
+                    f"Invalid relative path for scene for {os.path.basename(bsz_p)!r}. "
+                    "Use path segments in [A-Za-z0-9._-] only and re-export.",
+                    file=sys.stderr,
+                )
+                return 1
+            try:
+                _validate_rel_path(slug, "output_tag")
+            except ValueError as e:
+                print(f"Invalid output tag for {bsz_p}: {e}", file=sys.stderr)
+                return 1
+            frame_rows.append(
+                {
+                    "bella_scene": bella_scene,
+                    "output_tag": slug,
+                    "publish_stem": slug,
+                }
+            )
+
+        print(
+            f"Shaman: {len(rows)} file(s) in one merged tree (shared res/; "
+            f"{len(frame_rows)} .bsx by stem match) → requirements → "
+            f"upload → checkout → {len(frame_rows)}-task job …\n"
+            f"Render share: …/renders/<checkout_path>/<stem>.png (same rel path as single-frame bella)\n"
+        )
+        try:
+            upload_shaman_files(session, rows, out_dir, base)
+            create_shaman_checkout(session, rows, checkout_path, base)
+            submit_bella_frames_job(
+                session,
+                app,
+                checkout_path,
+                base,
+                frames=frame_rows,
+                metadata=metadata,
+                job_name=job_name,
+                priority=state.priority,
+                bella_version=state.bella_version,
+            )
+        except RuntimeError as e:
+            _print_submission_error(str(e))
+            return 1
+    finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
+    return 0
+
+
+def _run_full_submission_impl(app: AppProfile, state: SubmitState) -> int:
+    print(f"{app.display_name} — {app.banner_subtitle}\n")
+
+    base = _effective_manager_url(state)
+    print(f"Manager: {base}")
+
+    try:
+        session = make_session(base)
+    except (FileNotFoundError, ValueError) as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    print()
+
+    if os.environ.get("FLAMENCO_PRINT_CONFIGURATION", "").strip() == "1":
+        try:
+            r = session.get(
+                f"{base}/api/v3/configuration",
+                headers=_manager_headers(),
+                timeout=HTTP_TIMEOUT_API_S,
+            )
+            print("GET /api/v3/configuration →", r.status_code)
+            if r.text:
+                print(r.text[:2000])
+        except RuntimeError as e:
+            print(f"(configuration probe failed: {e})")
+
+    bsz = state.bsz_path
+    if not bsz or not os.path.isfile(bsz):
+        print(
+            f"Missing BSZ file: {bsz or '(none)'}\n"
+            "Pass --bsz, set BELLA_BSZ (or RHINO_BELLA_BSZ / SIMPLE_BELLA_BSZ), "
+            f"or place simple.bsz beside bella_submitter.py ({_here()}).",
+            file=sys.stderr,
+        )
+        return 1
+
+    discovered = discover_bsz_sequence(bsz)
+    try:
+        selected = select_sequence_for_render(discovered, state.frames_spec)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if len(selected) > 1:
+        return _submit_bella_sequence(
+            app, state, base, session, selected, discovered=discovered
+        )
+    return _submit_single_bella_zip(app, state, base, session, selected[0])

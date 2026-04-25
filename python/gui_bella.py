@@ -439,6 +439,7 @@ def _run_gui(s0: SubmitState) -> int:
             priority=int(priority_var.get()),
             comment=comment_text.get("1.0", "end").rstrip("\n"),
             manager_url=url_values[idx],
+            frames_spec="",
         )
 
         # Clear the log pane; worker writes every print() into it.
@@ -493,6 +494,7 @@ def _decide_gui(args: argparse.Namespace) -> bool:
             args.bella_version,
             args.priority,
             getattr(args, "manager_url", None),
+            getattr(args, "frames", None),
         )
     )
     return not any_job_arg
@@ -501,7 +503,7 @@ def _decide_gui(args: argparse.Namespace) -> bool:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = create_arg_parser(
         prog="guiBella",
-        description="Submit a Bella .bsz to Flamenco as a simple-bella-render job (tk GUI).",
+        description="Submit a Bella .bsz to Flamenco (tk GUI; single frame or multi-.bsz sequence on CLI).",
         include_gui=True,
     )
     args = parser.parse_args(argv)
