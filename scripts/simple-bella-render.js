@@ -236,19 +236,20 @@ function compileJob(job) {
         'oom_push "$LOCAL_RENDER/" "$CHECKOUT_PATH"',
     ].join("\n");
 
-    // 4. Thumbnail: ffmpeg PNG → preview.jpg, push to $OOM_RENDER_ROOT.
-    // Emitted as a blender-render command type so flamenco-worker's "Saved:"
-    // regex fires and surfaces the preview in the web GUI.
+    // 4. Thumbnail: previews only for Flamenco UI — not under the artist render path
+    // (…/renders/<checkout_path>/). Written to a parallel tree: …/renders/_flamenco_ui/…
+    // blender-render + "Saved:" line keeps the manager preview working.
     const thumbnailScript = [
         "set -euo pipefail",
         ': "${FFMPEG_PATH:?FFMPEG_PATH not set in worker env}"',
         ". " + OOM_SYNC_LIB,
         'CHECKOUT_PATH="' + checkoutPath + '"',
         'LOCAL_RENDER="$OOM_TMP_DISK/renders/$CHECKOUT_PATH"',
-        'PREVIEW="$LOCAL_RENDER/preview.jpg"',
-        '"$FFMPEG_PATH" -i "$LOCAL_RENDER/' + sceneBaseName + '.png" -vf scale=' + thumbScale + ' -q:v 5 "$PREVIEW" -y',
-        'oom_push "$PREVIEW" "$CHECKOUT_PATH"',
-        'printf "\\nSaved: \'%s\'\\n" "$OOM_RENDER_ROOT/$CHECKOUT_PATH/preview.jpg"',
+        ': "${OOM_RENDER_ROOT:?}"',
+        'UI_PREVIEW_DIR="$OOM_RENDER_ROOT/_flamenco_ui/$CHECKOUT_PATH"',
+        'mkdir -p "$UI_PREVIEW_DIR"',
+        '"$FFMPEG_PATH" -i "$LOCAL_RENDER/' + sceneBaseName + '.png" -vf scale=' + thumbScale + ' -q:v 5 "$UI_PREVIEW_DIR/preview.jpg" -y',
+        'printf "\\nSaved: \'%s\'\\n" "$UI_PREVIEW_DIR/preview.jpg"',
         "sleep 2",
     ].join("\n");
 
